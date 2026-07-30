@@ -53,7 +53,9 @@ Assistant Service
   ↓
 Runtime Adapter
   ↓
-Pi Runtime
+LiteLLM
+  ↓
+LLM Provider (Anthropic / OpenAI / Google / ...)
 ```
 
 ### 各层职责与边界
@@ -75,9 +77,9 @@ Pi Runtime
 - **负责**：统一 Agent 执行接口、屏蔽不同 Runtime 差异、Agent Loop、Tool Calling、Streaming、Retry、Context 管理
 - **不负责**：Memory、Skill、Permission、Workflow、数据库查询、业务判断
 
-#### Pi Runtime
-- **负责**：封装 Pi SDK 调用、消息格式转换、Token 计算、错误处理
-- **不负责**：Tool 实现、Memory 访问、业务流程控制
+#### LiteLLM
+- **负责**：多 Provider LLM 统一调用、消息格式转换、Token 计算、重试、错误处理
+- **不负责**：Agent Loop、Tool 实现、Memory 访问、业务流程控制
 
 ---
 
