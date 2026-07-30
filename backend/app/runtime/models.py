@@ -312,7 +312,9 @@ class SuspendDecision:
 
     type: Literal["suspend"] = "suspend"
     request: SuspendRequest = field(
-        default_factory=lambda: SuspendRequest("", ToolCall("", "", {}))
+        default_factory=lambda: SuspendRequest(
+            SuspensionType.TOOL_APPROVAL, ToolCall("", "", {})
+        )
     )
 
 
