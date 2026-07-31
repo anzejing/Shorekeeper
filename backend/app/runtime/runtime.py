@@ -89,6 +89,7 @@ class NativePythonRuntime:
         event_store: Any = None,  # SQLiteEventStore（可选，用于事件查询）
         default_model: str = "",
         default_max_steps: int = 20,
+        llm_extra: dict[str, Any] | None = None,  # LLM provider-specific 配置
     ) -> None:
         self._llm = llm
         self._tool_executor = tool_executor
@@ -99,6 +100,7 @@ class NativePythonRuntime:
         self._event_store = event_store
         self._default_model = default_model
         self._default_max_steps = default_max_steps
+        self._llm_extra = llm_extra or {}
 
         # 运行中的 Run：run_id → (task, cancellation_token)
         self._active: dict[str, tuple[asyncio.Task, CancellationToken]] = {}
@@ -185,6 +187,7 @@ class NativePythonRuntime:
             cancellation=cancellation,
             usage=snapshot.usage,
             metadata=snapshot.metadata,
+            llm_extra=dict(self._llm_extra),
         )
 
         task = asyncio.create_task(self._run_agent_loop(ctx, snapshot))
@@ -197,10 +200,11 @@ class NativePythonRuntime:
         try:
             await run_loop(ctx)
 
-            # 更新最终状态
+            # 更新最终状态和消息
             snapshot = await self._run_store.get(RunId(ctx.run_id))
             if snapshot and snapshot.status == RunStatus.RUNNING:
                 snapshot.status = RunStatus.COMPLETED
+                snapshot.messages = list(ctx.messages)
                 snapshot.completed_at = datetime.now(timezone.utc)
                 await self._run_store.save(snapshot)
 
@@ -209,6 +213,7 @@ class NativePythonRuntime:
             snapshot = await self._run_store.get(RunId(ctx.run_id))
             if snapshot and snapshot.status == RunStatus.RUNNING:
                 snapshot.status = RunStatus.FAILED
+                snapshot.messages = list(ctx.messages)
                 snapshot.completed_at = datetime.now(timezone.utc)
                 await self._run_store.save(snapshot)
         finally:
@@ -261,6 +266,7 @@ class NativePythonRuntime:
             model=self._default_model,
             cancellation=cancellation,
             usage=snapshot.usage,
+            llm_extra=dict(self._llm_extra),
         )
 
         task = asyncio.create_task(self._run_agent_loop(ctx, snapshot))

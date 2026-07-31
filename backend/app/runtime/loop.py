@@ -114,9 +114,11 @@ class RunContext:
     model: str = ""
     temperature: float | None = None
     max_tokens: int | None = None
+    llm_extra: dict[str, Any] = field(default_factory=dict)  # LLM provider-specific 配置
 
     # 运行时
     current_step: int = 0
+    event_sequence: int = 0  # 全局事件序列号（跨 step 递增）
     cancellation: CancellationToken = field(default_factory=CancellationToken)
     usage: Usage = field(default_factory=Usage)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -162,6 +164,12 @@ async def run_loop(ctx: RunContext) -> None:
 
             # 收集流式事件并发布
             collected = await _collect_stream(ctx, response)
+
+            # 将助手回复添加到消息列表
+            if collected.text:
+                ctx.messages.append(
+                    Message(role=Role.ASSISTANT, content=collected.text)
+                )
 
             # 判断：final answer 还是 tool calls
             if not collected.tool_calls:
@@ -291,9 +299,10 @@ async def _publish(ctx: RunContext, event_cls: type, **kwargs: Any) -> RuntimeEv
         event_cls,
         run_id=ctx.run_id,
         session_id=ctx.session_id,
-        sequence=ctx.current_step,
+        sequence=ctx.event_sequence,
         **kwargs,
     )
+    ctx.event_sequence += 1
     await ctx.publisher.publish(event)
     return event
 
@@ -340,6 +349,7 @@ async def _call_llm(ctx: RunContext, step: int) -> list[LiteLLMStreamEvent]:
         tools=_tools_to_dicts(ctx.tools) if ctx.tools else None,
         max_tokens=ctx.max_tokens,
         temperature=ctx.temperature,
+        extra=dict(ctx.llm_extra),
     )
 
     # 流式调用

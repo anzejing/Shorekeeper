@@ -42,8 +42,21 @@ class NativeLiteLLMClient:
     ) -> AsyncIterator[LiteLLMStreamEvent]:
         """流式调用 LLM。"""
         # 构造 litellm 参数
+        # 处理 OpenAI 兼容的自定义 endpoint
+        extra = dict(request.extra)
+        model = request.model
+
+        # 如果有 api_base 且 model 没有 provider 前缀，自动加 openai/
+        api_base = extra.pop("base_url", None) or extra.pop("api_base", None)
+        if api_base and "/" not in model:
+            model = f"openai/{model}"
+            extra["api_base"] = api_base
+
+        # api_key 从 extra 提取
+        api_key = extra.pop("api_key", None)
+
         kwargs: dict = {
-            "model": request.model,
+            "model": model,
             "messages": request.messages,
             "stream": True,
         }
@@ -53,8 +66,10 @@ class NativeLiteLLMClient:
             kwargs["max_tokens"] = request.max_tokens
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
+        if api_key:
+            kwargs["api_key"] = api_key
         # 合并 provider-specific kwargs
-        kwargs.update(request.extra)
+        kwargs.update(extra)
 
         try:
             response = await acompletion(**kwargs)

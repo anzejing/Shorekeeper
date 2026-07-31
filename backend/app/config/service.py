@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from pathlib import Path
 from typing import Any, Callable
@@ -13,6 +14,9 @@ from pydantic import BaseModel
 from app.config.schema import AppConfig
 
 log = logging.getLogger(__name__)
+
+# 环境变量前缀
+_ENV_PREFIX = "SHOREKEEPER_"
 
 # Default config file path
 _DEFAULT_CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "data"
@@ -57,19 +61,51 @@ class ConfigService:
     # ------------------------------------------------------------------
 
     def _load(self) -> AppConfig:
-        """Load config from YAML file, falling back to defaults."""
+        """Load config from YAML file, then override with environment variables."""
+        raw: dict[str, Any] = {}
+
+        # 1. 从 YAML 文件加载
         if self._config_file.exists():
             try:
-                raw = yaml.safe_load(self._config_file.read_text(encoding="utf-8"))
-                if isinstance(raw, dict):
-                    return AppConfig.model_validate(raw)
-                log.warning("config.yaml is not a dict, using defaults")
+                loaded = yaml.safe_load(self._config_file.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    raw = loaded
+                else:
+                    log.warning("config.yaml is not a dict, using defaults")
             except Exception:
                 log.exception("Failed to parse config.yaml, using defaults")
         else:
             log.info("config.yaml not found, creating with defaults")
-            self._save(AppConfig())
-        return AppConfig()
+
+        # 2. 用环境变量覆盖（格式：SHOREKEEPER_SECTION_KEY）
+        raw = self._apply_env_overrides(raw)
+
+        # 3. 验证并返回
+        config = AppConfig.model_validate(raw)
+        if not self._config_file.exists():
+            self._save(config)
+        return config
+
+    @staticmethod
+    def _apply_env_overrides(raw: dict[str, Any]) -> dict[str, Any]:
+        """用 SHOREKEEPER_ 前缀的环境变量覆盖配置。
+
+        格式：SHOREKEEPER_SECTION_KEY → config.section.key
+        例如：SHOREKEEPER_RUNTIME_API_KEY → runtime.api_key
+        """
+        for key, value in os.environ.items():
+            if not key.startswith(_ENV_PREFIX):
+                continue
+            parts = key[len(_ENV_PREFIX):].lower().split("_", 1)
+            if len(parts) != 2:
+                continue
+            section, field = parts
+            if section not in raw:
+                raw[section] = {}
+            if isinstance(raw[section], dict):
+                raw[section][field] = value
+                log.debug("Config override from env: %s.%s", section, field)
+        return raw
 
     def _save(self, config: AppConfig) -> None:
         """Persist config to YAML file."""

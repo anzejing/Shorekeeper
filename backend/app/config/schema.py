@@ -14,6 +14,10 @@ class ServerConfig(BaseModel):
 class RuntimeConfig(BaseModel):
     """AI Runtime 配置"""
 
+    base_url: str = Field(
+        "",
+        description="API Base URL（OpenAI 兼容格式，留空使用默认）",
+    )
     api_key: str = Field(
         "",
         description="AI Runtime API Key",

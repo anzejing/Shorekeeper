@@ -2166,14 +2166,14 @@ backend/app/
 | # | 模块 | 文件 | 估计行数 | 状态 | 完成日期 |
 |---|---|---|---|---|---|
 | 1 | 核心领域模型 | `runtime/models.py` | ~400 | ✅ 已完成 | 2026-07-30 |
-| 2 | RuntimeEvent 定义 | `runtime/events.py` | ~250 | ⬜ 待开发 | |
-| 3 | LiteLLM 薄封装 | `runtime/litellm_client.py` | ~80 | ⬜ 待开发 | |
-| 4 | Agent Loop | `runtime/loop.py` | ~200 | ⬜ 待开发 | |
-| 5 | 状态机 | `runtime/state.py` | ~100 | ⬜ 待开发 | |
-| 6 | SQLite 持久化 | `runtime/store.py` | ~300 | ⬜ 待开发 | |
-| 7 | NativePythonRuntime | `runtime/runtime.py` | ~150 | ⬜ 待开发 | |
-| 8 | Runtime API | `api/runtime.py` | ~100 | ⬜ 待开发 | |
-| 9 | 测试 | `tests/test_runtime*.py` | ~200 | ⬜ 待开发 | |
+| 2 | RuntimeEvent 定义 | `runtime/events.py` | ~250 | ✅ 已完成 | 2026-07-31 |
+| 3 | LiteLLM 薄封装 | `runtime/litellm_client.py` | ~80 | ✅ 已完成 | 2026-07-31 |
+| 4 | Agent Loop | `runtime/loop.py` | ~200 | ✅ 已完成 | 2026-07-31 |
+| 5 | 状态机 | `runtime/state.py` | ~100 | ✅ 已完成 | 2026-07-31 |
+| 6 | SQLite 持久化 | `runtime/store.py` | ~300 | ✅ 已完成 | 2026-07-31 |
+| 7 | NativePythonRuntime | `runtime/runtime.py` | ~150 | ✅ 已完成 | 2026-07-31 |
+| 8 | Runtime API | `api/runtime.py` | ~100 | ✅ 已完成 | 2026-07-31 |
+| 9 | 测试 | `tests/test_runtime*.py` | ~200 | ✅ 已完成 | 2026-07-31 |
 
 ---
 
