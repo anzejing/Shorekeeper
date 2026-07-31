@@ -178,7 +178,7 @@ class SQLiteRunStore:
                 session_id = ?,
                 agent_id = ?,
                 status = ?,
-                version = version + 1,
+                version = ?,
                 current_step = ?,
                 max_steps = ?,
                 suspension_id = ?,
@@ -188,11 +188,12 @@ class SQLiteRunStore:
                 metadata = ?,
                 updated_at = ?,
                 completed_at = ?
-            WHERE id = ? AND version = ?""",
+            WHERE id = ?""",
             (
                 snapshot.session_id,
                 snapshot.agent_id,
                 snapshot.status.value,
+                snapshot.version,
                 snapshot.current_step,
                 snapshot.max_steps,
                 snapshot.suspension_id,
@@ -203,17 +204,10 @@ class SQLiteRunStore:
                 now,
                 _dt_to_iso(snapshot.completed_at),
                 snapshot.run_id,
-                snapshot.version,
             ),
         )
 
         if cursor.rowcount == 0:
-            # 不存在或版本不匹配，检查是否存在
-            existing = await self.get(RunId(snapshot.run_id))
-            if existing is not None:
-                raise VersionConflictError(
-                    snapshot.run_id, snapshot.version, existing.version
-                )
             # 不存在，插入
             await self._db.execute(
                 """INSERT INTO runs (

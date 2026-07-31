@@ -18,6 +18,7 @@ dependencies = [
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
     "aiosqlite>=0.20.0",
+    "litellm>=1.40.0",
 ]
 
 [project.optional-dependencies]

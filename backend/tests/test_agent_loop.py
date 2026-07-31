@@ -358,7 +358,8 @@ class TestRunLoop:
         publisher = MockEventPublisher()
         ctx = _make_ctx(llm, publisher=publisher, max_steps=3)
 
-        await run_loop(ctx)
+        with pytest.raises(MaxStepsExceeded):
+            await run_loop(ctx)
 
         # 应发布 RunFailed
         failed = publisher.get_events_by_type(RunFailed)
@@ -391,7 +392,8 @@ class TestRunLoop:
         # 立即取消
         ctx.cancellation.cancel("用户取消")
 
-        await run_loop(ctx)
+        with pytest.raises(asyncio.CancelledError):
+            await run_loop(ctx)
 
         # 应发布 RunFailed（CancelledError）
         failed = publisher.get_events_by_type(RunFailed)
@@ -413,7 +415,8 @@ class TestRunLoop:
         publisher = MockEventPublisher()
         ctx = _make_ctx(llm, publisher=publisher)
 
-        await run_loop(ctx)
+        with pytest.raises(LiteLLMError):
+            await run_loop(ctx)
 
         failed = publisher.get_events_by_type(RunFailed)
         assert len(failed) == 1

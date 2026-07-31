@@ -252,6 +252,7 @@ async def run_loop(ctx: RunContext) -> None:
             error_message=str(e),
             is_retryable=False,
         )
+        raise
     except asyncio.CancelledError as e:
         await _publish(
             ctx,
@@ -260,6 +261,7 @@ async def run_loop(ctx: RunContext) -> None:
             error_message=str(e) or "操作已取消",
             is_retryable=False,
         )
+        raise
     except LiteLLMError as e:
         await _publish(
             ctx,
@@ -268,6 +270,7 @@ async def run_loop(ctx: RunContext) -> None:
             error_message=str(e),
             is_retryable=e.is_retryable,
         )
+        raise
     except Exception as e:
         await _publish(
             ctx,
@@ -276,6 +279,7 @@ async def run_loop(ctx: RunContext) -> None:
             error_message=str(e),
             is_retryable=False,
         )
+        raise
 
 
 # ─── 内部辅助函数 ─────────────────────────────────────────

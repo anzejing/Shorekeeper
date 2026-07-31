@@ -17,7 +17,6 @@ from app.runtime.models import (
     RunStatus,
     Usage,
 )
-from app.runtime.state import VersionConflictError
 from app.runtime.store import (
     SQLiteCheckpointStore,
     SQLiteEventStore,
@@ -102,40 +101,22 @@ class TestSQLiteRunStore:
         await db.close()
 
     @pytest.mark.asyncio
-    async def test_update_increments_version(self) -> None:
+    async def test_update_version(self) -> None:
         db = await init_db()
         store = SQLiteRunStore(db)
 
         snapshot = _make_snapshot(version=0)
         await store.save(snapshot)
 
+        # 模拟状态机转换后的版本更新
         snapshot.status = RunStatus.COMPLETED
-        snapshot.version = 0  # 匹配数据库中的版本
+        snapshot.version = 1
         await store.save(snapshot)
 
         loaded = await store.get(RunId("run-1"))
         assert loaded is not None
         assert loaded.status == RunStatus.COMPLETED
-        assert loaded.version == 1  # 递增了
-
-        await db.close()
-
-    @pytest.mark.asyncio
-    async def test_version_conflict_raises(self) -> None:
-        db = await init_db()
-        store = SQLiteRunStore(db)
-
-        snapshot = _make_snapshot(version=0)
-        await store.save(snapshot)
-
-        # 用错误的版本尝试更新
-        snapshot.status = RunStatus.COMPLETED
-        snapshot.version = 99  # 不匹配
-        with pytest.raises(VersionConflictError) as exc_info:
-            await store.save(snapshot)
-        assert exc_info.value.run_id == "run-1"
-        assert exc_info.value.expected == 99
-        assert exc_info.value.actual == 0
+        assert loaded.version == 1
 
         await db.close()
 
@@ -420,7 +401,7 @@ class TestIntegration:
         assert snapshot is not None
         snapshot.status = RunStatus.COMPLETED
         snapshot.completed_at = datetime.now(timezone.utc)
-        snapshot.version = 1  # 匹配（已递增一次）
+        snapshot.version = 1  # 模拟状态机转换后的版本
         await run_store.save(snapshot)
         await event_store.save(
             create_event(
@@ -432,7 +413,7 @@ class TestIntegration:
         final = await run_store.get(RunId("run-1"))
         assert final is not None
         assert final.status == RunStatus.COMPLETED
-        assert final.version == 2
+        assert final.version == 1
 
         # 验证事件历史
         events = await event_store.list_by_run(RunId("run-1"))
