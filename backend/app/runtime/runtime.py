@@ -86,6 +86,7 @@ class NativePythonRuntime:
         run_store: RunStore,
         checkpoint_store: CheckpointStore,
         *,
+        event_store: Any = None,  # SQLiteEventStore（可选，用于事件查询）
         default_model: str = "",
         default_max_steps: int = 20,
     ) -> None:
@@ -95,6 +96,7 @@ class NativePythonRuntime:
         self._publisher = publisher
         self._run_store = run_store
         self._checkpoint_store = checkpoint_store
+        self._event_store = event_store
         self._default_model = default_model
         self._default_max_steps = default_max_steps
 
