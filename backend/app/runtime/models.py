@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -445,3 +446,42 @@ class ExecutionAttempt:
     completed_at: datetime | None
     status: str                   # running | completed | failed
     error: str | None = None
+
+
+# ─── 取消令牌 ──────────────────────────────────────────────
+
+
+class CancellationToken:
+    """协作式取消令牌。
+
+    传递给 LiteLLMClient 和 ToolExecutor，用于传播取消信号。
+    基于 asyncio.Event 实现，线程安全。
+    """
+
+    def __init__(self) -> None:
+        self._event = asyncio.Event()
+        self._reason: str = ""
+
+    def cancel(self, reason: str = "") -> None:
+        """发出取消信号。"""
+        self._reason = reason
+        self._event.set()
+
+    @property
+    def is_cancelled(self) -> bool:
+        """是否已取消。"""
+        return self._event.is_set()
+
+    @property
+    def reason(self) -> str:
+        """取消原因。"""
+        return self._reason
+
+    async def wait(self) -> None:
+        """等待取消信号。用于 async 场景下检查是否被取消。"""
+        await self._event.wait()
+
+    async def raise_if_cancelled(self) -> None:
+        """如果已取消则抛出 asyncio.CancelledError。"""
+        if self.is_cancelled:
+            raise asyncio.CancelledError(self._reason or "操作已取消")
