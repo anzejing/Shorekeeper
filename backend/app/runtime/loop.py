@@ -14,6 +14,7 @@ Runtime 的执行引擎，~200 行核心循环。
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -166,7 +167,27 @@ async def run_loop(ctx: RunContext) -> None:
             collected = await _collect_stream(ctx, response)
 
             # 将助手回复添加到消息列表
-            if collected.text:
+            if collected.tool_calls:
+                # 有 tool calls → assistant 消息需要包含 tool_calls 信息
+                tool_calls_data = [
+                    {
+                        "id": tc.tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.tool_name,
+                            "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                        },
+                    }
+                    for tc in collected.tool_calls
+                ]
+                ctx.messages.append(
+                    Message(
+                        role=Role.ASSISTANT,
+                        content=collected.text or "",
+                        metadata={"tool_calls": tool_calls_data},
+                    )
+                )
+            elif collected.text:
                 ctx.messages.append(
                     Message(role=Role.ASSISTANT, content=collected.text)
                 )
@@ -531,6 +552,15 @@ def _messages_to_dicts(messages: list[Message]) -> list[dict[str, Any]]:
         else:
             # 多模态内容暂不处理，转为字符串
             d["content"] = str(msg.content)
+
+        # Assistant 消息带 tool_calls
+        if msg.role == Role.ASSISTANT and "tool_calls" in msg.metadata:
+            d["tool_calls"] = msg.metadata["tool_calls"]
+
+        # Tool 消息需要 tool_call_id
+        if msg.role == Role.TOOL and "tool_call_id" in msg.metadata:
+            d["tool_call_id"] = msg.metadata["tool_call_id"]
+
         result.append(d)
     return result
 
