@@ -20,6 +20,9 @@ from app.memory.service import MemoryService
 from app.memory.session_store import SessionStore
 from app.memory.sqlite_store import SQLiteMemoryStore, SQLiteSessionStore, init_memory_db
 from app.memory.tools import MEMORY_TOOLS, MemoryToolExecutor
+from app.tools import BUILTIN_TOOLS
+from app.tools.bash import BashExecutor
+from app.tools.file import ReadFileExecutor, WriteFileExecutor
 from app.permission.analyzer.bash import BashAnalyzer
 from app.permission.approval import ApprovalManager
 from app.permission.engine import PermissionEngine
@@ -75,10 +78,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     memory_service = MemoryService(session_store, memory_store)
     init_memory_api(memory_service)
 
-    # 初始化 ToolRegistry + 注册 Memory Tools
+    # 初始化 ToolRegistry + 注册 Tools
     tool_registry = ToolRegistry()
     memory_tool_executor = MemoryToolExecutor(memory_service)
     tool_registry.register_many(MEMORY_TOOLS, memory_tool_executor)
+
+    # 注册通用 Tools
+    bash_executor = BashExecutor()
+    read_file_executor = ReadFileExecutor()
+    write_file_executor = WriteFileExecutor()
+    tool_registry.register(BUILTIN_TOOLS[0], bash_executor)   # bash_execute
+    tool_registry.register(BUILTIN_TOOLS[1], read_file_executor)  # read_file
+    tool_registry.register(BUILTIN_TOOLS[2], write_file_executor) # write_file
 
     # 初始化 Skill 模块
     await init_skill_db(db)
