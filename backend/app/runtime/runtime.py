@@ -104,6 +104,8 @@ class NativePythonRuntime:
 
         # 运行中的 Run：run_id → (task, cancellation_token)
         self._active: dict[str, tuple[asyncio.Task, CancellationToken]] = {}
+        # 每个 Run 注入的 tools
+        self._run_tools: dict[str, list] = {}
 
     async def create_run(self, request: RunRequest) -> RunHandle:
         """创建 Run。"""
@@ -139,6 +141,10 @@ class NativePythonRuntime:
                 metadata=request.metadata,
             )
         )
+
+        # 存储该 Run 注入的 tools
+        if request.tools:
+            self._run_tools[run_id] = list(request.tools)
 
         return RunHandle(
             run_id=run_id,
@@ -176,7 +182,7 @@ class NativePythonRuntime:
             session_id=snapshot.session_id,
             agent_id=snapshot.agent_id,
             messages=list(snapshot.messages),
-            tools=[],  # 工具由调用方注入
+            tools=self._run_tools.get(run_id, []),
             max_steps=snapshot.max_steps,
             llm=self._llm,
             tool_executor=self._tool_executor,
@@ -365,6 +371,35 @@ class NativePythonRuntime:
 
     async def get_run(self, run_id: RunId) -> RunSnapshot:
         """获取 Run 快照。"""
+        return await self._get_snapshot(run_id)
+
+    async def execute_and_wait(
+        self, run_id: RunId, timeout: float = 120.0
+    ) -> RunSnapshot:
+        """启动执行并等待完成。
+
+        Args:
+            run_id: Run ID。
+            timeout: 超时秒数。
+
+        Returns:
+            完成后的 RunSnapshot。
+
+        Raises:
+            asyncio.TimeoutError: 超时。
+            RunNotFoundError: Run 不存在。
+        """
+        await self.execute(run_id)
+
+        # 等待 task 完成
+        if run_id in self._active:
+            task, _ = self._active[run_id]
+            try:
+                await asyncio.wait_for(task, timeout=timeout)
+            except asyncio.TimeoutError:
+                await self.cancel(run_id, reason="执行超时")
+                raise
+
         return await self._get_snapshot(run_id)
 
     # ─── 内部辅助 ─────────────────────────────────────────

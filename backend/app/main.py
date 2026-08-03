@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.chat import init_chat_api, router as chat_router
 from app.api.config import router as config_router
 from app.api.memory import init_memory_api, router as memory_router
 from app.api.runtime import router as runtime_router
@@ -74,6 +75,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await skill_service.initialize()
     init_skill_api(skill_service)
 
+    # 初始化 Chat API
+    init_chat_api(memory_service, skill_service, tool_registry)
+
     # 初始化 LLM 客户端
     llm = NativeLiteLLMClient()
 
@@ -116,6 +120,7 @@ app.include_router(config_router, prefix="/api/config", tags=["config"])
 app.include_router(runtime_router, prefix="/api", tags=["runtime"])
 app.include_router(memory_router)
 app.include_router(skill_router)
+app.include_router(chat_router)
 
 
 @app.get("/health")

@@ -45,7 +45,7 @@ def set_runtime(runtime: NativePythonRuntime) -> None:
     _runtime = runtime
 
 
-def _get_runtime() -> NativePythonRuntime:
+def get_runtime() -> NativePythonRuntime:
     """获取 Runtime 实例。"""
     if _runtime is None:
         raise HTTPException(status_code=503, detail="Runtime 未初始化")
@@ -112,7 +112,7 @@ class RunSnapshotResponse(BaseModel):
 @router.post("/runs", response_model=RunHandleResponse)
 async def create_run(request: CreateRunRequest) -> RunHandleResponse:
     """创建 Run。"""
-    runtime = _get_runtime()
+    runtime = get_runtime()
 
     # 构造领域模型
     messages = [
@@ -143,7 +143,7 @@ async def create_run(request: CreateRunRequest) -> RunHandleResponse:
 @router.post("/runs/{run_id}/execute")
 async def execute_run(run_id: str) -> dict[str, str]:
     """启动 Run 执行。"""
-    runtime = _get_runtime()
+    runtime = get_runtime()
     try:
         await runtime.execute(run_id)
         return {"status": "executing"}
@@ -158,7 +158,7 @@ async def stream_run(run_id: str, after_sequence: int = -1) -> StreamingResponse
     通过 EventStore 查询事件并以 SSE 格式推送。
     支持 after_sequence 参数用于断线补发。
     """
-    runtime = _get_runtime()
+    runtime = get_runtime()
 
     # 验证 Run 存在
     try:
@@ -240,7 +240,7 @@ async def stream_run(run_id: str, after_sequence: int = -1) -> StreamingResponse
 @router.post("/runs/{run_id}/resume", response_model=RunHandleResponse)
 async def resume_run(run_id: str, request: ResumeRequest) -> RunHandleResponse:
     """恢复暂停的 Run。"""
-    runtime = _get_runtime()
+    runtime = get_runtime()
 
     resume_input = ResumeInput(
         approved=request.approved,
@@ -264,7 +264,7 @@ async def resume_run(run_id: str, request: ResumeRequest) -> RunHandleResponse:
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(run_id: str, request: CancelRequest | None = None) -> dict[str, str]:
     """取消 Run。"""
-    runtime = _get_runtime()
+    runtime = get_runtime()
     reason = request.reason if request else None
 
     try:
@@ -277,7 +277,7 @@ async def cancel_run(run_id: str, request: CancelRequest | None = None) -> dict[
 @router.get("/runs/{run_id}", response_model=RunSnapshotResponse)
 async def get_run(run_id: str) -> RunSnapshotResponse:
     """查询 Run 状态。"""
-    runtime = _get_runtime()
+    runtime = get_runtime()
 
     try:
         snapshot = await runtime.get_run(run_id)
