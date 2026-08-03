@@ -296,6 +296,25 @@ class SQLiteApprovalStore:
         rows = await cursor.fetchall()
         return [_row_to_approval(r) for r in rows]
 
+    async def get_by_tool_call_id(self, tool_call_id: str) -> ApprovalRequest | None:
+        """按 tool_call_id 查找审批请求（不限状态）。"""
+        cursor = await self._db.execute(
+            "SELECT * FROM approval_requests WHERE tool_call_id = ? ORDER BY created_at DESC LIMIT 1",
+            (tool_call_id,),
+        )
+        row = await cursor.fetchone()
+        return _row_to_approval(row) if row else None
+
+    async def list_by_status(self, status: ApprovalStatus) -> list[ApprovalRequest]:
+        """按状态列出审批请求。"""
+        cursor = await self._db.execute(
+            "SELECT * FROM approval_requests WHERE status = ? ORDER BY created_at",
+            (status.value,),
+        )
+        rows = await cursor.fetchall()
+        return [_row_to_approval(r) for r in rows]
+        return [_row_to_approval(r) for r in rows]
+
     async def resolve(
         self,
         approval_id: str,

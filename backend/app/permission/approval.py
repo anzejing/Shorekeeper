@@ -109,6 +109,20 @@ class ApprovalManager:
         """列出待审批请求。"""
         return await self._approval_store.list_pending(run_id)
 
+    async def get_by_tool_call(self, tool_call_id: str) -> ApprovalRequest | None:
+        """按 tool_call_id 查找审批请求。"""
+        return await self._approval_store.get_by_tool_call_id(tool_call_id)
+
+    async def find_approved_by_tool(self, tool_name: str, tool_arguments: dict) -> ApprovalRequest | None:
+        """按 tool_name + arguments 查找已批准的审批。"""
+        # 搜索所有已批准的审批
+        all_approvals = await self._approval_store.list_by_status(ApprovalStatus.APPROVED)
+        for approval in all_approvals:
+            if (approval.tool_name == tool_name and
+                approval.tool_arguments == tool_arguments):
+                return approval
+        return None
+
     async def approve(
         self,
         approval_id: str,

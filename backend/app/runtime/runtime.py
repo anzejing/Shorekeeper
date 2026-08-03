@@ -268,7 +268,7 @@ class NativePythonRuntime:
             session_id=snapshot.session_id,
             agent_id=snapshot.agent_id,
             messages=list(snapshot.messages),
-            tools=[],
+            tools=self._run_tools.get(run_id, []),
             max_steps=snapshot.max_steps,
             llm=self._llm,
             tool_executor=self._tool_executor,
