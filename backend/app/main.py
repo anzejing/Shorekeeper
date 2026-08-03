@@ -7,9 +7,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.config import router as config_router
+from app.api.memory import init_memory_api, router as memory_router
 from app.api.runtime import router as runtime_router
 from app.api.runtime import set_runtime
 from app.config.service import ConfigService
+from app.memory.memory_store import MemoryStore
+from app.memory.service import MemoryService
+from app.memory.session_store import SessionStore
+from app.memory.sqlite_store import SQLiteMemoryStore, SQLiteSessionStore, init_memory_db
 from app.runtime.interceptor import InterceptorChain
 from app.runtime.native_litellm_client import NativeLiteLLMClient
 from app.runtime.runtime import NativePythonRuntime
@@ -37,6 +42,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     run_store = SQLiteRunStore(db)
     event_store = SQLiteEventStore(db)
     checkpoint_store = SQLiteCheckpointStore(db)
+
+    # 初始化 Memory 模块
+    await init_memory_db(db)
+    session_store = SQLiteSessionStore(db)
+    memory_store = SQLiteMemoryStore(db)
+    memory_service = MemoryService(session_store, memory_store)
+    init_memory_api(memory_service)
 
     # 初始化 LLM 客户端
     llm = NativeLiteLLMClient()
@@ -78,6 +90,7 @@ app.add_middleware(
 
 app.include_router(config_router, prefix="/api/config", tags=["config"])
 app.include_router(runtime_router, prefix="/api", tags=["runtime"])
+app.include_router(memory_router)
 
 
 @app.get("/health")
