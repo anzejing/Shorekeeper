@@ -177,6 +177,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             created_at=now, updated_at=now,
         ),
     ]
+    # 插入默认规则（如果不存在）
+    for rule in default_rules:
+        existing = await permission_store.get(rule.rule_id)
+        if existing is None:
+            await permission_store.create(rule)
+
     init_permission_api(permission_store, default_rules)
     init_approval_api(approval_manager)
 
