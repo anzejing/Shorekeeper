@@ -128,7 +128,14 @@ class RunContext:
 # ─── Agent Loop ───────────────────────────────────────────
 
 
-async def run_loop(ctx: RunContext) -> None:
+class LoopResult:
+    """Agent Loop 的执行结果。"""
+    def __init__(self, suspended: bool = False, suspension_id: str = ""):
+        self.suspended = suspended
+        self.suspension_id = suspension_id
+
+
+async def run_loop(ctx: RunContext) -> LoopResult:
     """Agent Loop 核心循环。
 
     流程：
@@ -201,7 +208,7 @@ async def run_loop(ctx: RunContext) -> None:
                     output=collected.text,
                     usage=ctx.usage,
                 )
-                return
+                return LoopResult(suspended=False)
 
             # 工具调用路径
             for tool_call in collected.tool_calls:
@@ -237,7 +244,7 @@ async def run_loop(ctx: RunContext) -> None:
                         arguments=tool_call.arguments,
                         reason=decision.request.reason,
                     )
-                    return
+                    return LoopResult(suspended=True)
 
                 if isinstance(decision, Reject):
                     # 拒绝 → 回填错误消息给模型

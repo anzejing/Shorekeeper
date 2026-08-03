@@ -204,14 +204,20 @@ class NativePythonRuntime:
     ) -> None:
         """执行 Agent Loop 并处理完成状态。"""
         try:
-            await run_loop(ctx)
+            result = await run_loop(ctx)
 
             # 更新最终状态和消息
             snapshot = await self._run_store.get(RunId(ctx.run_id))
             if snapshot and snapshot.status == RunStatus.RUNNING:
-                snapshot.status = RunStatus.COMPLETED
+                if result and result.suspended:
+                    # 暂停状态
+                    snapshot.status = RunStatus.WAITING
+                    snapshot.suspension_id = result.suspension_id
+                else:
+                    # 正常完成
+                    snapshot.status = RunStatus.COMPLETED
+                    snapshot.completed_at = datetime.now(timezone.utc)
                 snapshot.messages = list(ctx.messages)
-                snapshot.completed_at = datetime.now(timezone.utc)
                 await self._run_store.save(snapshot)
 
         except Exception:

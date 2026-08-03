@@ -15,6 +15,7 @@ from typing import Any
 import aiosqlite
 
 from app.permission.models import (
+    AnalysisCompleteness,
     ApprovalRequest,
     ApprovalStatus,
     ExecutionClaim,
@@ -22,6 +23,7 @@ from app.permission.models import (
     PermissionRule,
     PermissionRuleLayer,
     PermissionScope,
+    ResolvedCapability,
 )
 
 # ─── 建表 SQL ─────────────────────────────────────────────

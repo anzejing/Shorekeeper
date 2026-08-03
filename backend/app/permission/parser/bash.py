@@ -142,7 +142,7 @@ class BashParser:
             children=children,
             raw=command,
             parse_completeness=completeness,
-            warnings=warnings,
+            parse_warnings=warnings,
         )
 
     def _split_operators(self, command: str) -> list[dict[str, str | None]]:
