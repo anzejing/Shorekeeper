@@ -6,9 +6,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.approval import init_approval_api, router as approval_router
 from app.api.chat import init_chat_api, router as chat_router
 from app.api.config import router as config_router
 from app.api.memory import init_memory_api, router as memory_router
+from app.api.permission import init_permission_api, router as permission_router
 from app.api.runtime import router as runtime_router
 from app.api.runtime import set_runtime
 from app.api.skill import init_skill_api, router as skill_router
@@ -18,6 +20,18 @@ from app.memory.service import MemoryService
 from app.memory.session_store import SessionStore
 from app.memory.sqlite_store import SQLiteMemoryStore, SQLiteSessionStore, init_memory_db
 from app.memory.tools import MEMORY_TOOLS, MemoryToolExecutor
+from app.permission.analyzer.bash import BashAnalyzer
+from app.permission.approval import ApprovalManager
+from app.permission.engine import PermissionEngine
+from app.permission.interceptor import PermissionInterceptor
+from app.permission.models import PermissionResult, PermissionRule, PermissionRuleLayer, PermissionScope
+from app.permission.parser.bash import BashParser
+from app.permission.store import (
+    SQLiteApprovalStore,
+    SQLiteClaimStore,
+    SQLitePermissionStore,
+    init_permission_db,
+)
 from app.runtime.interceptor import InterceptorChain
 from app.runtime.native_litellm_client import NativeLiteLLMClient
 from app.runtime.runtime import NativePythonRuntime
@@ -75,6 +89,86 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await skill_service.initialize()
     init_skill_api(skill_service)
 
+    # 初始化 Permission 模块
+    await init_permission_db(db)
+    permission_store = SQLitePermissionStore(db)
+    approval_store = SQLiteApprovalStore(db)
+    claim_store = SQLiteClaimStore(db)
+
+    # 创建 PermissionEngine（注册 Bash Parser + Analyzer）
+    parsers = {"bash_execute": BashParser()}
+    analyzers = {"bash_execute": BashAnalyzer(str(config_service.data_dir))}
+    engine = PermissionEngine(
+        store=permission_store,
+        parsers=parsers,
+        analyzers=analyzers,
+    )
+
+    # 创建 ApprovalManager
+    approval_manager = ApprovalManager(approval_store, claim_store)
+
+    # 创建 PermissionInterceptor
+    permission_interceptor = PermissionInterceptor(
+        engine=engine,
+        approval_manager=approval_manager,
+    )
+
+    # 初始化 Permission API
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    default_rules = [
+        PermissionRule(
+            rule_id="sys-elevate", layer=PermissionRuleLayer.SYSTEM_GUARDRAIL,
+            capability="system.elevate", tool_name=None, arguments_pattern=None,
+            conditions={}, policy=PermissionResult.DENY, priority=100,
+            scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
+            created_by="system", description="系统强制：禁止提权",
+            created_at=now, updated_at=now,
+        ),
+        PermissionRule(
+            rule_id="sys-dynamic", layer=PermissionRuleLayer.SYSTEM_GUARDRAIL,
+            capability="system.execute_dynamic", tool_name=None, arguments_pattern=None,
+            conditions={}, policy=PermissionResult.REQUIRE_APPROVAL, priority=100,
+            scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
+            created_by="system", description="系统强制：动态执行需审批",
+            created_at=now, updated_at=now,
+        ),
+        PermissionRule(
+            rule_id="sys-unknown", layer=PermissionRuleLayer.SYSTEM_GUARDRAIL,
+            capability="system.execute_unknown", tool_name=None, arguments_pattern=None,
+            conditions={}, policy=PermissionResult.REQUIRE_APPROVAL, priority=100,
+            scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
+            created_by="system", description="系统强制：未知命令需审批",
+            created_at=now, updated_at=now,
+        ),
+        PermissionRule(
+            rule_id="default-memory-read", layer=PermissionRuleLayer.BUILTIN_DEFAULT,
+            capability="memory.read", tool_name=None, arguments_pattern=None,
+            conditions={}, policy=PermissionResult.ALLOW, priority=0,
+            scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
+            created_by="system", description="读取记忆安全",
+            created_at=now, updated_at=now,
+        ),
+        PermissionRule(
+            rule_id="default-memory-write", layer=PermissionRuleLayer.BUILTIN_DEFAULT,
+            capability="memory.write", tool_name=None, arguments_pattern=None,
+            conditions={}, policy=PermissionResult.ALLOW, priority=0,
+            scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
+            created_by="system", description="写入记忆安全",
+            created_at=now, updated_at=now,
+        ),
+        PermissionRule(
+            rule_id="default-memory-search", layer=PermissionRuleLayer.BUILTIN_DEFAULT,
+            capability="memory.search", tool_name=None, arguments_pattern=None,
+            conditions={}, policy=PermissionResult.ALLOW, priority=0,
+            scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
+            created_by="system", description="搜索记忆安全",
+            created_at=now, updated_at=now,
+        ),
+    ]
+    init_permission_api(permission_store, default_rules)
+    init_approval_api(approval_manager)
+
     # 初始化 Chat API
     init_chat_api(memory_service, skill_service, tool_registry)
 
@@ -88,11 +182,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if runtime_config.api_key:
         llm_extra["api_key"] = runtime_config.api_key
 
-    # 创建 Runtime（使用 ToolRegistry 替换 NoopToolExecutor）
+    # 创建 Runtime（使用 PermissionInterceptor 替换 NoopInterceptorChain）
     runtime = NativePythonRuntime(
         llm=llm,
         tool_executor=tool_registry,
-        interceptor=_NoopInterceptorChain(),
+        interceptor=permission_interceptor,
         publisher=_EventStorePublisher(event_store),
         run_store=run_store,
         checkpoint_store=checkpoint_store,
@@ -120,6 +214,8 @@ app.include_router(config_router, prefix="/api/config", tags=["config"])
 app.include_router(runtime_router, prefix="/api", tags=["runtime"])
 app.include_router(memory_router)
 app.include_router(skill_router)
+app.include_router(permission_router)
+app.include_router(approval_router)
 app.include_router(chat_router)
 
 
