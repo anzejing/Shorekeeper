@@ -10,15 +10,21 @@ from app.api.config import router as config_router
 from app.api.memory import init_memory_api, router as memory_router
 from app.api.runtime import router as runtime_router
 from app.api.runtime import set_runtime
+from app.api.skill import init_skill_api, router as skill_router
 from app.config.service import ConfigService
 from app.memory.memory_store import MemoryStore
 from app.memory.service import MemoryService
 from app.memory.session_store import SessionStore
 from app.memory.sqlite_store import SQLiteMemoryStore, SQLiteSessionStore, init_memory_db
+from app.memory.tools import MEMORY_TOOLS, MemoryToolExecutor
 from app.runtime.interceptor import InterceptorChain
 from app.runtime.native_litellm_client import NativeLiteLLMClient
 from app.runtime.runtime import NativePythonRuntime
 from app.runtime.store import SQLiteCheckpointStore, SQLiteEventStore, SQLiteRunStore, init_db
+from app.skill.loader import SkillLoader
+from app.skill.service import SkillService
+from app.skill.store import SQLiteSkillStore, init_skill_db
+from app.tool.registry import ToolRegistry
 
 # 加载 .env 文件
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -54,6 +60,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     memory_service = MemoryService(session_store, memory_store)
     init_memory_api(memory_service)
 
+    # 初始化 ToolRegistry + 注册 Memory Tools
+    tool_registry = ToolRegistry()
+    memory_tool_executor = MemoryToolExecutor(memory_service)
+    tool_registry.register_many(MEMORY_TOOLS, memory_tool_executor)
+
+    # 初始化 Skill 模块
+    await init_skill_db(db)
+    skill_store = SQLiteSkillStore(db)
+    skills_dir = config_service.data_dir / "skills"
+    skill_loader = SkillLoader(skills_dir, skill_store)
+    skill_service = SkillService(skill_store, skill_loader)
+    await skill_service.initialize()
+    init_skill_api(skill_service)
+
     # 初始化 LLM 客户端
     llm = NativeLiteLLMClient()
 
@@ -64,10 +84,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if runtime_config.api_key:
         llm_extra["api_key"] = runtime_config.api_key
 
-    # 创建 Runtime
+    # 创建 Runtime（使用 ToolRegistry 替换 NoopToolExecutor）
     runtime = NativePythonRuntime(
         llm=llm,
-        tool_executor=_NoopToolExecutor(),
+        tool_executor=tool_registry,
         interceptor=_NoopInterceptorChain(),
         publisher=_EventStorePublisher(event_store),
         run_store=run_store,
@@ -95,6 +115,7 @@ app.add_middleware(
 app.include_router(config_router, prefix="/api/config", tags=["config"])
 app.include_router(runtime_router, prefix="/api", tags=["runtime"])
 app.include_router(memory_router)
+app.include_router(skill_router)
 
 
 @app.get("/health")
@@ -103,19 +124,6 @@ async def health():
 
 
 # ─── 启动时的临时实现（后续替换为真实实现） ────────────────
-
-
-class _NoopToolExecutor:
-    """空工具执行器——暂不执行任何工具。"""
-
-    async def execute(self, tool_call, *, cancellation, context=None):
-        from app.runtime.models import TextPart, ToolResult
-
-        return ToolResult(
-            tool_call_id=tool_call.tool_call_id,
-            tool_name=tool_call.tool_name,
-            content=[TextPart(text="工具执行暂未实现")],
-        )
 
 
 class _NoopInterceptorChain:
