@@ -45,7 +45,7 @@ class StorageConfig(BaseModel):
     """存储配置"""
 
     database_url: str = Field(
-        "sqlite:///data/shorekeeper.db", description="数据库连接地址"
+        "sqlite:///shorekeeper.db", description="数据库连接地址（相对于数据目录）"
     )
     backup_enabled: bool = Field(True, description="是否启用自动备份")
 

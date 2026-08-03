@@ -18,8 +18,10 @@ log = logging.getLogger(__name__)
 # 环境变量前缀
 _ENV_PREFIX = "SHOREKEEPER_"
 
-# Default config file path
-_DEFAULT_CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+# 数据目录：优先环境变量，默认 ~/.shorekeeper/
+_DEFAULT_DATA_DIR = Path(
+    os.environ.get("SHOREKEEPER_DATA_DIR", str(Path.home() / ".shorekeeper"))
+)
 
 
 class ConfigService:
@@ -32,10 +34,14 @@ class ConfigService:
     _instance: ConfigService | None = None
     _lock = threading.Lock()
 
-    def __init__(self, config_dir: Path | None = None) -> None:
-        self._config_dir = config_dir or _DEFAULT_CONFIG_DIR
-        self._config_file = self._config_dir / "config.yaml"
+    def __init__(self, data_dir: Path | None = None) -> None:
+        self._data_dir = data_dir or _DEFAULT_DATA_DIR
+        self._config_file = self._data_dir / "config.yaml"
         self._callbacks: list[Callable[[str, Any], None]] = []
+        # 确保数据目录存在
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        (self._data_dir / "skills").mkdir(exist_ok=True)
+        (self._data_dir / "logs").mkdir(exist_ok=True)
         self._app_config = self._load()
 
     # ------------------------------------------------------------------
@@ -43,11 +49,11 @@ class ConfigService:
     # ------------------------------------------------------------------
 
     @classmethod
-    def get_instance(cls, config_dir: Path | None = None) -> ConfigService:
+    def get_instance(cls, data_dir: Path | None = None) -> ConfigService:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = cls(config_dir=config_dir)
+                    cls._instance = cls(data_dir=data_dir)
         return cls._instance
 
     @classmethod
@@ -109,7 +115,7 @@ class ConfigService:
 
     def _save(self, config: AppConfig) -> None:
         """Persist config to YAML file."""
-        self._config_dir.mkdir(parents=True, exist_ok=True)
+        self._data_dir.mkdir(parents=True, exist_ok=True)
         data = config.model_dump()
         self._config_file.write_text(
             yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False),
@@ -123,6 +129,11 @@ class ConfigService:
     # ------------------------------------------------------------------
     # Read
     # ------------------------------------------------------------------
+
+    @property
+    def data_dir(self) -> Path:
+        """数据根目录。"""
+        return self._data_dir
 
     @property
     def config(self) -> AppConfig:

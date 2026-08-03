@@ -31,12 +31,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     config_service = ConfigService.get_instance()
     runtime_config = config_service.config.runtime
 
-    # 初始化数据库
+    # 初始化数据库（路径相对于数据目录）
     db_path = config_service.config.storage.database_url
-    # 从 sqlite:///path 转换为 path
     if db_path.startswith("sqlite:///"):
         db_path = db_path[len("sqlite:///"):]
-    db = await init_db(db_path)
+    # 相对路径解析为数据目录下的路径
+    db_file = Path(db_path)
+    if not db_file.is_absolute():
+        db_file = config_service.data_dir / db_file
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+    db = await init_db(str(db_file))
 
     # 初始化存储层
     run_store = SQLiteRunStore(db)
