@@ -68,6 +68,35 @@ CREATE INDEX IF NOT EXISTS idx_memory_entries_source_session_id
 # ─── 辅助函数 ─────────────────────────────────────────────
 
 
+def _extract_search_keywords(query: str) -> list[str]:
+    """从查询中提取搜索关键词。
+
+    - 空格分词（英文 / 多词查询）
+    - 纯中文查询按 2-6 字滑动窗口提取片段（提高中文命中率）
+    """
+    words = [w for w in query.split() if w]
+    # 有空格分词 → 直接使用分词结果（去重、去单字符）
+    if len(words) > 1:
+        return list(dict.fromkeys(w for w in words if len(w) >= 2))
+
+    text = words[0] if words else query
+    # 纯中文（或中英混合）→ 滑动窗口提取 2-4 字片段
+    # （长片段多为查询前缀/后缀，匹配价值低且占用配额）
+    windows: list[str] = []
+    max_len = min(len(text), 4)
+    for size in range(max_len, 1, -1):
+        for i in range(len(text) - size + 1):
+            windows.append(text[i : i + size])
+    # 去重，保留窗口顺序（长的优先）
+    seen: set[str] = set()
+    result: list[str] = []
+    for w in windows:
+        if w not in seen:
+            seen.add(w)
+            result.append(w)
+    return result[:50]  # 限制关键词数量，避免 SQL 过长
+
+
 def _now_iso() -> str:
     """当前 UTC 时间的 ISO 格式字符串。"""
     return datetime.now(timezone.utc).isoformat()
@@ -420,36 +449,45 @@ class SQLiteMemoryStore:
         session_id: str | None = None,
         limit: int = 20,
     ) -> list[MemoryEntry]:
-        """搜索长期记忆（LIKE 关键词匹配）。
+        """搜索长期记忆（OR 关键词匹配）。
 
-        初版使用 LIKE 实现基本搜索，后续可引入 FTS5（需中文分词器）或向量搜索。
+        关键词提取：
+        - 空格分词（英文/多词查询）
+        - 中文查询按 2-6 字滑动窗口提取片段
+        任一关键词命中即返回，按命中关键词数量排序，
+        避免整句 LIKE 导致的中文查询命中率低的问题。
         """
         if not query.strip():
             return []
 
-        # 对每个关键词做 LIKE 匹配（AND 语义）
-        keywords = [w for w in query.split() if w]
+        keywords = _extract_search_keywords(query)
         if not keywords:
             return []
 
-        conditions = ["content LIKE ?"] * len(keywords)
-        params: list[Any] = [f"%{w}%" for w in keywords]
-
+        # 关键词之间 OR 匹配；session 过滤是 AND（限定会话范围）
+        keyword_cond = " OR ".join(["content LIKE ?"] * len(keywords))
         if session_id is not None:
-            conditions.append("source_session_id = ?")
-            params.append(session_id)
+            where = f"({keyword_cond}) AND source_session_id = ?"
+            where_params: list[Any] = [f"%{w}%" for w in keywords] + [session_id]
+        else:
+            where = keyword_cond
+            where_params = [f"%{w}%" for w in keywords]
 
-        where = " AND ".join(conditions)
-        params.append(limit)
-
+        # 按命中关键词数量排序（最多取 100 条候选，再截取 limit）
+        # 注意：SQL 参数按 ? 出现顺序绑定——SELECT 的 CASE 先于 WHERE
+        case_expr = " + ".join(
+            f"(CASE WHEN content LIKE ? THEN 1 ELSE 0 END)" for _ in keywords
+        )
         cursor = await self._db.execute(
-            f"""SELECT * FROM memory_entries
+            f"""SELECT *, ({case_expr}) AS match_count
+            FROM memory_entries
             WHERE {where}
-            ORDER BY updated_at DESC
+            ORDER BY match_count DESC, updated_at DESC
             LIMIT ?""",
-            params,
+            [f"%{w}%" for w in keywords] + where_params + [100],
         )
         rows = await cursor.fetchall()
+        rows = rows[:limit]
         return [_row_to_memory(row) for row in rows]
 
 

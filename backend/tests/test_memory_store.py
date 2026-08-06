@@ -220,6 +220,49 @@ class TestMemorySearch:
         await db.close()
 
     @pytest.mark.asyncio
+    async def test_search_chinese_query_sliding_window(self) -> None:
+        """中文整句查询通过滑动窗口命中。"""
+        store, db = await _make_store()
+
+        await store.create(content="用户喜欢用 pytest 写测试", category="preference")
+        await store.create(content="用户喜欢用中文交流", category="preference")
+
+        # 整句查询（无空格）也能命中“写测试”片段
+        results = await store.search("你还记得我喜欢用什么写测试吗")
+        assert any("pytest" in r.content for r in results)
+
+        await db.close()
+
+    @pytest.mark.asyncio
+    async def test_search_ranked_by_match_count(self) -> None:
+        """命中关键词多的结果排在前面。"""
+        store, db = await _make_store()
+
+        await store.create(content="用户喜欢写测试", category="preference")
+        await store.create(
+            content="用户喜欢写测试 用 pytest 框架", category="preference"
+        )
+
+        results = await store.search("pytest 测试")
+        assert len(results) >= 2
+        # 同时命中 pytest + 测试 的结果应该排在最前
+        assert "pytest" in results[0].content
+
+        await db.close()
+
+    @pytest.mark.asyncio
+    async def test_search_empty_query(self) -> None:
+        """空查询返回空列表。"""
+        store, db = await _make_store()
+
+        await store.create(content="用户偏好中文回复", category="preference")
+
+        results = await store.search("   ")
+        assert results == []
+
+        await db.close()
+
+    @pytest.mark.asyncio
     async def test_search_empty_query(self) -> None:
         store, db = await _make_store()
 
