@@ -298,17 +298,19 @@ def _format_sse(event: Any) -> str:
         "sequence": event.sequence,
         "timestamp": event.timestamp.isoformat(),
     }
-    # 添加事件特有字段
-    if hasattr(event, "delta"):
-        data["delta"] = event.delta
-    if hasattr(event, "output"):
-        data["output"] = event.output
-    if hasattr(event, "error_type"):
-        data["error_type"] = event.error_type
-    if hasattr(event, "error_message"):
-        data["error_message"] = event.error_message
-    if hasattr(event, "tool_name"):
-        data["tool_name"] = event.tool_name
+    # 添加所有事件特有字段（排除基类字段）
+    _base_fields = {"event_id", "run_id", "session_id", "sequence", "timestamp", "event_type", "schema_version", "causal_parent_id", "execution_attempt", "persisted"}
+    for key, value in event.__dict__.items():
+        if key not in _base_fields and value is not None:
+            # dataclass 转 dict（如 Usage）
+            if hasattr(value, "__dataclass_fields__"):
+                from dataclasses import asdict
+                data[key] = asdict(value)
+            elif isinstance(value, list) and value and hasattr(value[0], "__dataclass_fields__"):
+                from dataclasses import asdict
+                data[key] = [asdict(v) for v in value]
+            else:
+                data[key] = value
 
     return f"event: {event.event_type.value}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
