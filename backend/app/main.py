@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
@@ -5,6 +7,11 @@ from typing import AsyncIterator
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger(__name__)
+
+# 审批过期清理周期（秒）
+_APPROVAL_CLEANUP_INTERVAL = 600
 
 from app.api.approval import init_approval_api, router as approval_router
 from app.api.chat import init_chat_api, router as chat_router
@@ -215,7 +222,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     set_runtime(runtime)
 
-    yield
+    # 启动后台任务：定期清理过期审批
+    approval_cleanup_task = asyncio.create_task(
+        _approval_cleanup_loop(approval_manager)
+    )
+
+    try:
+        yield
+    finally:
+        approval_cleanup_task.cancel()
+        try:
+            await approval_cleanup_task
+        except asyncio.CancelledError:
+            pass
+
+
+async def _approval_cleanup_loop(approval_manager: ApprovalManager) -> None:
+    """定期将过期审批标记为 expired。
+
+    每 10 分钟执行一次，避免过期审批永久残留在 DB。
+    """
+    while True:
+        try:
+            await asyncio.sleep(_APPROVAL_CLEANUP_INTERVAL)
+            count = await approval_manager.expire_stale()
+            if count:
+                logger.info("已清理 %d 条过期审批", count)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("审批过期清理任务异常")
 
 
 app = FastAPI(title="Shorekeeper", version="0.1.0", lifespan=lifespan)
