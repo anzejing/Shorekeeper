@@ -88,7 +88,10 @@ async function handleDeleteSession(e: Event, sessionId: string) {
   <aside class="sidebar">
     <!-- 上部：导航 -->
     <div class="sidebar-nav">
-      <h1 class="sidebar-title">Shorekeeper</h1>
+      <h1 class="sidebar-title">
+        <img src="/favicon-32x32.png" alt="Shorekeeper" class="sidebar-logo" />
+        <span>Shorekeeper</span>
+      </h1>
       <button class="new-chat-btn" @click="handleNewChat">
         <KunIcon name="lucide:plus" />
         <span>新对话</span>
@@ -177,10 +180,20 @@ async function handleDeleteSession(e: Event, sessionId: string) {
 }
 
 .sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 18px;
   font-weight: 700;
   padding: 0 8px 12px;
   color: var(--kun-color-text, #111827);
+}
+
+.sidebar-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
 }
 
 .new-chat-btn {
