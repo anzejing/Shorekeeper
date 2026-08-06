@@ -58,17 +58,13 @@ const groupedSessions = computed<SessionGroup[]>(() => {
 })
 
 function handleNewChat() {
-  chat.newSession()
-  if (route.path !== '/chat') {
-    router.push('/chat')
-  }
+  // URL 驱动：push('/chat') → watch 清空会话
+  router.push('/chat')
 }
 
 function handleSelectSession(sessionId: string) {
-  chat.switchSession(sessionId)
-  if (route.path !== '/chat') {
-    router.push('/chat')
-  }
+  // URL 驱动：push('/chat/{id}') → watch 加载会话（保留后退历史）
+  router.push(`/chat/${sessionId}`)
 }
 
 async function handleDeleteSession(e: Event, sessionId: string) {
@@ -78,7 +74,12 @@ async function handleDeleteSession(e: Event, sessionId: string) {
     message: '确定删除这个会话？此操作不可恢复。',
   })
   if (ok) {
+    const wasCurrent = chat.currentSessionId === sessionId
     chat.removeSession(sessionId)
+    // 删除的是当前会话 → URL 回退新会话
+    if (wasCurrent) {
+      router.push('/chat')
+    }
   }
 }
 </script>

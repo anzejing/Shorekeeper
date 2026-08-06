@@ -114,34 +114,62 @@ export const useChatStore = defineStore('chat', () => {
 
   // --- 会话切换 ---
 
-  async function switchSession(sessionId: string) {
-    if (currentSessionId.value === sessionId) return
+  async function loadSession(sessionId: string | null): Promise<boolean> {
+    /**
+     * 按 URL 驱动的会话加载（URL 是唯一状态源）。
+     * - null / 空 → 新会话（清空消息），返回 true
+     * - 与当前会话相同 → 跳过，返回 true
+     * - 加载失败（如会话已删除）→ 记录错误，回退新会话，返回 false
+     */
+    const normalized = sessionId || null
+    if (normalized === currentSessionId.value) return true
 
     disconnectSSE()
-    currentSessionId.value = sessionId
     currentRunId.value = null
     messages.value = []
-    messagesLoading.value = true
+    error.value = null
 
+    if (!normalized) {
+      currentSessionId.value = null
+      return true
+    }
+
+    currentSessionId.value = normalized
+    messagesLoading.value = true
     try {
-      const res = await fetchMessages(sessionId)
+      const res = await fetchMessages(normalized)
       messages.value = res.messages.map((m) => ({
         id: m.message_id,
         role: m.role as ChatMessage['role'],
         content: m.content,
         created_at: m.created_at,
       }))
+      return true
     } catch (e: any) {
       error.value = e.message
+      // 会话不存在/已删除 → 回退新会话
+      currentSessionId.value = null
+      messages.value = []
+      return false
     } finally {
       messagesLoading.value = false
     }
   }
 
+  async function switchSession(sessionId: string) {
+    // 兼容旧调用：直接走统一加载逻辑
+    await loadSession(sessionId)
+  }
+
   // --- 发送消息 ---
 
-  async function sendMessage(content: string) {
-    if (!content.trim() || sending.value) return
+  async function sendMessage(content: string): Promise<string | null> {
+    /**
+     * 发送消息。返回会话 id：
+     * - 新会话首次发送时返回后端分配的 session_id（供调用方更新 URL）
+     * - 已有会话或发送失败时返回 null
+     */
+    if (!content.trim() || sending.value) return null
 
     error.value = null
     sending.value = true
@@ -174,18 +202,23 @@ export const useChatStore = defineStore('chat', () => {
 
       currentRunId.value = run_id
 
+      // 新会话首次发送：记录后端分配的 session_id（供调用方更新 URL）
+      let newSessionId: string | null = null
       if (!currentSessionId.value) {
         currentSessionId.value = session_id
+        newSessionId = session_id
       }
 
       await loadSessions()
 
       _connectSSE(run_id, assistantMsgId)
+      return newSessionId
     } catch (e: any) {
       error.value = e.message
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
       if (idx !== -1) messages.value.splice(idx, 1)
       sending.value = false
+      return null
     }
   }
 
@@ -439,18 +472,6 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // --- 新建会话 ---
-
-  function newSession() {
-    disconnectSSE()
-    currentSessionId.value = null
-    currentRunId.value = null
-    messages.value = []
-    sending.value = false
-    streamingContent.value = ''
-    error.value = null
-  }
-
   return {
     sessions,
     sessionsLoading,
@@ -464,10 +485,10 @@ export const useChatStore = defineStore('chat', () => {
     error,
     canStop,
     loadSessions,
+    loadSession,
     removeSession,
     switchSession,
     sendMessage,
-    newSession,
     approveTool,
     denyTool,
     stopGeneration,

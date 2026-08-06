@@ -1,12 +1,36 @@
 <script setup lang="ts">
+import { watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import ChatMessageList from '../components/ChatMessageList.vue'
 import ChatInput from '../components/ChatInput.vue'
 
 const chat = useChatStore()
+const route = useRoute()
+const router = useRouter()
 
-function handleSend(content: string) {
-  chat.sendMessage(content)
+// URL 是会话状态的唯一来源：
+// /chat → 新会话；/chat/{sessionId} → 指定会话（刷新保持）
+watch(
+  () => route.params.sessionId,
+  async (sessionId) => {
+    const ok = await chat.loadSession(
+      typeof sessionId === 'string' ? sessionId : null,
+    )
+    // 会话不存在/已删除 → URL 回退新会话
+    if (!ok && route.path !== '/chat') {
+      router.replace('/chat')
+    }
+  },
+  { immediate: true },
+)
+
+async function handleSend(content: string) {
+  const sessionId = await chat.sendMessage(content)
+  // 新会话首次发送：URL 带上 session_id（replace，避免历史堆栈膨胀）
+  if (sessionId && route.params.sessionId !== sessionId) {
+    router.replace(`/chat/${sessionId}`)
+  }
 }
 
 function handleStop() {
