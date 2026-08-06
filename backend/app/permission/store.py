@@ -313,6 +313,14 @@ class SQLiteApprovalStore:
         )
         rows = await cursor.fetchall()
         return [_row_to_approval(r) for r in rows]
+
+    async def list_resolved_by_run(self, run_id: str) -> list[ApprovalRequest]:
+        """列出某个 run 下已解决（approved / denied）的审批。"""
+        cursor = await self._db.execute(
+            "SELECT * FROM approval_requests WHERE run_id = ? AND status IN (?, ?) ORDER BY created_at",
+            (run_id, ApprovalStatus.APPROVED.value, ApprovalStatus.DENIED.value),
+        )
+        rows = await cursor.fetchall()
         return [_row_to_approval(r) for r in rows]
 
     async def resolve(

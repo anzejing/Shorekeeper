@@ -154,7 +154,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ),
         PermissionRule(
             rule_id="default-memory-read", layer=PermissionRuleLayer.BUILTIN_DEFAULT,
-            capability="memory.read", tool_name=None, arguments_pattern=None,
+            capability=None, tool_name="read_memory", arguments_pattern=None,
             conditions={}, policy=PermissionResult.ALLOW, priority=0,
             scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
             created_by="system", description="读取记忆安全",
@@ -162,7 +162,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ),
         PermissionRule(
             rule_id="default-memory-write", layer=PermissionRuleLayer.BUILTIN_DEFAULT,
-            capability="memory.write", tool_name=None, arguments_pattern=None,
+            capability=None, tool_name="write_memory", arguments_pattern=None,
             conditions={}, policy=PermissionResult.ALLOW, priority=0,
             scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
             created_by="system", description="写入记忆安全",
@@ -170,18 +170,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ),
         PermissionRule(
             rule_id="default-memory-search", layer=PermissionRuleLayer.BUILTIN_DEFAULT,
-            capability="memory.search", tool_name=None, arguments_pattern=None,
+            capability=None, tool_name="search_memory", arguments_pattern=None,
             conditions={}, policy=PermissionResult.ALLOW, priority=0,
             scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
             created_by="system", description="搜索记忆安全",
             created_at=now, updated_at=now,
         ),
     ]
-    # 插入默认规则（如果不存在）
+    # 插入默认规则（已存在则删除重建，确保规则定义同步）
     for rule in default_rules:
         existing = await permission_store.get(rule.rule_id)
-        if existing is None:
-            await permission_store.create(rule)
+        if existing is not None:
+            await permission_store.delete(rule.rule_id)
+        await permission_store.create(rule)
 
     init_permission_api(permission_store, default_rules)
     init_approval_api(approval_manager)

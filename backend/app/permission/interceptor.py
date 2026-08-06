@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from app.permission.approval import ApprovalManager
@@ -70,15 +71,25 @@ class PermissionInterceptor:
 
     async def process(self, tool_call: ToolCall) -> ToolDecision:
         """处理工具调用的权限检查。"""
-        # 0. 检查是否已有已批准的审批（resume 后的情况）
-        existing_approval = await self._find_approved_approval(tool_call)
-        if existing_approval:
-            log.info("已有已批准审批: %s — approval_id=%s", tool_call.tool_name, existing_approval.approval_id)
-            # 获取并消费执行声明
-            claim = await self._approval_manager.get_claim_by_approval(existing_approval.approval_id)
-            if claim:
-                await self._approval_manager.consume_claim(claim.claim_id)
-            return Allow()
+        # 0. 检查是否已有已解决的审批（resume 后的情况）
+        resolved = await self._find_resolved_approval(tool_call)
+        if resolved is not None:
+            if resolved.status.value == "approved":
+                log.info(
+                    "已有已批准审批: %s — approval_id=%s",
+                    tool_call.tool_name, resolved.approval_id,
+                )
+                # 获取并消费执行声明
+                claim = await self._approval_manager.get_claim_by_approval(resolved.approval_id)
+                if claim:
+                    await self._approval_manager.consume_claim(claim.claim_id)
+                return Allow()
+            if resolved.status.value == "denied":
+                log.info(
+                    "工具已被拒绝: %s — approval_id=%s",
+                    tool_call.tool_name, resolved.approval_id,
+                )
+                return Reject(reason=f"用户拒绝了该操作（审批 {resolved.approval_id[:8]}）")
 
         # 1. 评估权限
         decision = await self._engine.evaluate(tool_call)
@@ -122,19 +133,23 @@ class PermissionInterceptor:
         # 不应到达
         return Reject(reason="未知权限决策")
 
-    async def _find_approved_approval(self, tool_call: ToolCall):
-        """查找已批准但未消费的审批。
+    async def _find_resolved_approval(self, tool_call: ToolCall):
+        """查找当前 run 下已解决（approved / denied）的审批。
 
-        优先按 tool_call_id 匹配，其次按 tool_name + arguments 匹配。
+        优先按 tool_call_id 匹配，其次按 run_id + tool_name + arguments 匹配。
+        已过期（TTL 外）的审批不参与自动放行。
         """
+        now = datetime.now(timezone.utc)
+
         # 1. 按 tool_call_id 精确匹配（任何状态）
         approval = await self._approval_manager.get_by_tool_call(tool_call.tool_call_id)
-        if approval and approval.status.value == "approved":
-            return approval
+        if approval and approval.status.value in ("approved", "denied"):
+            if not (approval.expires_at and approval.expires_at <= now):
+                return approval
 
-        # 2. 按 tool_name + arguments 模糊匹配（resume 后 tool_call_id 会变）
-        approval = await self._approval_manager.find_approved_by_tool(
-            tool_call.tool_name, tool_call.arguments
+        # 2. 按 run_id + tool_name + arguments 匹配（resume 后 tool_call_id 会变）
+        approval = await self._approval_manager.find_resolved_by_tool(
+            self._run_id, tool_call.tool_name, tool_call.arguments
         )
         if approval:
             return approval

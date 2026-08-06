@@ -277,6 +277,7 @@ class ToolApprovalRequested(RuntimeEvent):
         EventType.TOOL_APPROVAL_REQUESTED
     )
     suspension_id: str = ""
+    approval_id: str = ""
     tool_call_id: str = ""
     tool_name: str = ""
     arguments: dict[str, Any] | None = None

@@ -114,12 +114,38 @@ class ApprovalManager:
         return await self._approval_store.get_by_tool_call_id(tool_call_id)
 
     async def find_approved_by_tool(self, tool_name: str, tool_arguments: dict) -> ApprovalRequest | None:
-        """按 tool_name + arguments 查找已批准的审批。"""
+        """按 tool_name + arguments 查找已批准且未过期的审批。"""
         # 搜索所有已批准的审批
         all_approvals = await self._approval_store.list_by_status(ApprovalStatus.APPROVED)
+        now = datetime.now(timezone.utc)
         for approval in all_approvals:
             if (approval.tool_name == tool_name and
                 approval.tool_arguments == tool_arguments):
+                # 已过期（TTL 内）的审批不再自动放行
+                if approval.expires_at and approval.expires_at <= now:
+                    continue
+                return approval
+        return None
+
+    async def find_resolved_by_tool(
+        self, run_id: str, tool_name: str, tool_arguments: dict
+    ) -> ApprovalRequest | None:
+        """按 run + tool_name + arguments 查找已解决（approved / denied）的审批。
+
+        resume 后 run 重新执行，模型会生成新的 tool_call_id，
+        此时需要通过 run_id + tool_name + arguments 匹配到用户已做的决定。
+        返回的审批通过 status 区分 approved / denied。
+        """
+        if not run_id:
+            return None
+        resolved = await self._approval_store.list_resolved_by_run(run_id)
+        now = datetime.now(timezone.utc)
+        for approval in reversed(resolved):  # 取最近一次决定
+            if (approval.tool_name == tool_name and
+                approval.tool_arguments == tool_arguments):
+                # 已过期的不参与
+                if approval.expires_at and approval.expires_at <= now:
+                    continue
                 return approval
         return None
 

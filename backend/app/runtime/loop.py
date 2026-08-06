@@ -239,6 +239,7 @@ async def run_loop(ctx: RunContext) -> LoopResult:
                     await _publish(
                         ctx,
                         ToolApprovalRequested,
+                        approval_id=decision.request.metadata.get("approval_id", ""),
                         tool_call_id=tool_call.tool_call_id,
                         tool_name=tool_call.tool_name,
                         arguments=tool_call.arguments,

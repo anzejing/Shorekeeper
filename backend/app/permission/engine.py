@@ -158,8 +158,10 @@ class PermissionEngine:
             if r not in candidates:
                 candidates.extend([r])
 
-        # 排序
+        # 排序：优先 tool_name 精确匹配的规则，再按 priority 排序
         sorted_rules = sort_rules(candidates)
+        # 将有 tool_name 匹配的规则排到前面
+        sorted_rules.sort(key=lambda r: (0 if r.tool_name == tool_call.tool_name else 1, -r.priority))
 
         # 逐条匹配
         for rule in sorted_rules:
