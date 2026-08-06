@@ -140,6 +140,7 @@ pytest tests/ -q        # 290 个测试
 | [docs/progress.md](docs/progress.md) | 开发进度与修改记录 |
 | [docs/ai-development.md](docs/ai-development.md) | AI 开发流程规范 |
 | [docs/engineering-principles.md](docs/engineering-principles.md) | 设计哲学 |
+| [docs/image-recognition.md](docs/image-recognition.md) | 模型无法识图时如何调用 pi + MiMo 识图 |
 
 ## 🧰 内置工具
 
