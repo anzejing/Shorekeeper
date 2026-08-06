@@ -32,6 +32,7 @@ Runtime Adapter        全部                ✅ 完成      (早期)
 LiteLLM                集成                ✅ 完成      (早期)
 ─────────────────────────────────────────────────────────────
 数据目录               ~/.shorekeeper/     ✅ 完成      64a8174
+测试                   后端 290 个          ✅ 通过      (最新)
 ```
 
 ## 已验证的端到端流程
@@ -41,58 +42,93 @@ LiteLLM                集成                ✅ 完成      (早期)
 | 基本对话 | ✅ | LLM 正常回复 |
 | 流式对话 (SSE) | ✅ | 文本实时增量输出 |
 | Memory write_memory | ✅ | 写入长期记忆 |
-| Memory search_memory | ✅ | 跨会话记忆召回 |
+| Memory search_memory | ✅ | 跨会话记忆召回（中文整句查询） |
 | Permission 拦截 | ✅ | bash_execute 触发 REQUIRE_APPROVAL |
 | Approval 审批通过 | ✅ | 创建审批 → 允许 → 执行 → 回复 |
 | Approval 审批拒绝 | ✅ | 拒绝 → 工具不执行 → AI 说明被拒 |
 | Run 暂停/恢复 | ✅ | WAITING → Resume → COMPLETED |
 | 多轮上下文 | ✅ | 同一会话上下文连贯 |
 | 停止生成 | ✅ | run 正确取消 |
-| 重新生成 | ✅ | 重新生成指定消息 |
+| 重新生成 | ✅ | 重新生成指定消息（含被取消消息） |
 | 会话管理 | ✅ | 新建 / 切换 / 删除（前后端一致） |
+| 会话删除确认 | ✅ | KunUI 确认框（取消/确定） |
+| 审批过期清理 | ✅ | 定时任务自动标记 expired |
+
+## 开发记录
+
+### 2026-08-06（浏览器端到端测试 + 功能修复）
+
+**背景**：使用 agent-browser 对前端进行真实浏览器测试（mimo 模型识图确认界面状态），覆盖工具审批、多轮对话、记忆召回等核心流程。
+
+**测试发现并修复的 Bug（8 个）**：
+
+| # | 模块 | 问题 | 修复 |
+|---|---|---|---|
+| 1 | 审批流程 | `ToolApprovalRequested` 事件缺 `approval_id` 字段，前端 resolve 请求 404，审批流程死循环 | 事件增加 `approval_id` 字段并透传 |
+| 2 | 审批流程 | `update_run_context` 从未被调用，审批记录 run_id/session_id 永远为空 | execute/resume 时同步拦截器上下文 |
+| 3 | 审批流程 | `find_approved_by_tool` 不检查过期，历史批准（如 echo hello）永久自动放行 | 增加 expires_at 过期检查 |
+| 4 | 审批流程 | 拒绝后 resume 找不到 denied 审批，重复创建新审批无限挂起 | denied 审批 → Reject 回填给模型 |
+| 5 | Run 执行 | `asyncio.wait_for` 超时会取消 Agent Loop task，run 被意外取消 | 改用 `asyncio.wait`（只等待不取消） |
+| 6 | Run 执行 | chat_stream 双重执行竞态（execute_and_wait + execute 并发） | 重构为单次 execute + `wait_until_terminal` |
+| 7 | 前端 SSE | `_processedSequences.clear()` 导致重连重放历史事件，审批块重复出现 | 去掉 clear，依赖序列号去重 |
+| 8 | 前端 SSE | 旧连接 onDone 干扰新连接状态（currentRunId 被清空） | 增加连接 id 隔离 |
+
+**P1 体验优化（4 项）**：
+
+| 项 | 内容 |
+|---|---|
+| 会话删除确认框 | 原生 `confirm()` → KunUI `useKunAlert()` |
+| search_memory 搜索 | LIKE AND → OR 语义 + 中文 2-4 字滑动窗口 + 按命中数排序 |
+| 审批过期清理 | lifespan 启动后台任务，每 10 分钟 `expire_stale()` |
+| 取消消息重新生成 | `showRegenerate` 去除 content 非空限制 |
+
+**测试新增**：search_memory 搜索测试（3 个）、审批管理测试（7 个，含过期清理/按 run 匹配/拒绝语义）。
+
+**验证结论**：
+- 后端测试 290 个全部通过
+- 前端 `pnpm build` 通过
+- 浏览器实测：审批允许/拒绝全流程、多轮对话、跨会话记忆召回、停止/重新生成、会话增删均正常
+- LLM function calling 偶发用文本代替工具调用（非阻塞，已从 P0 移除）
 
 ## 待解决问题
 
 | 问题 | 优先级 | 说明 |
 |---|---|---|
-| Skills/记忆管理页面 | P0 | 后端 API 就绪，前端页面未实现 |
-| 会话删除确认框 | P1 | 原生 confirm() 不符合 KunUI 风格 |
-| search_memory 搜索质量 | P1 | LIKE AND 语义，整句查询命中率低 |
-| 审批过期清理 | P1 | expire_stale 存在但未定时调用 |
-| 取消的 run 重新生成 | P1 | 空消息无重新生成按钮 |
-| 会话标题自动生成 | P2 | 当前用消息前 20 字 |
+| Skills/记忆管理页面 | P0 | 后端 API 就绪（skills/memory/permission），前端页面未实现 |
+| 会话标题自动生成 | P2 | 当前用消息前 20 字，无自动摘要 |
+| 更多工具 | P2 | web_search、python_execute |
+| Workflow 模块 | 长期 | 多步骤任务流程、状态恢复 |
+| 分布式执行 | 长期 | Temporal 集成 |
 
 ## 下一步计划
 
 ### 短期（当前迭代）
 
 1. **前端管理页面**
-   - Skills 管理页
-   - 记忆管理页
-
-2. **P1 体验优化**
-   - KunUI 确认框替换原生 confirm
-   - search_memory 搜索改进（OR 语义 + 中文滑动窗口）
-   - 审批过期定时清理
-   - 取消消息可重新生成
+   - Skills 管理页（列表 / 启用禁用 / 详情 / 安装）
+   - 记忆管理页（对话历史 / 长期记忆 / 搜索）
 
 ### 中期
 
-3. **更多 Tools**
+2. **更多 Tools**
    - web_search
    - python_execute
 
-4. **会话标题自动生成**
+3. **会话标题自动生成**
 
 ### 长期
 
-5. **Workflow 模块**
-6. **分布式执行（Temporal）**
+4. **Workflow 模块**
+5. **分布式执行（Temporal）**
 
 ## 提交历史
 
 | 提交 | 日期 | 内容 |
 |---|---|---|
+| 1aac7cc | 2026-08-06 | docs: 更新开发进度 |
+| 34a157f | 2026-08-06 | feat: 审批过期定时清理（+审批测试） |
+| a1fe56b | 2026-08-06 | feat: 改进 search_memory 搜索（+搜索测试） |
+| 97b3d95 | 2026-08-06 | fix: 前端交互优化（KunAlert + 重新生成） |
 | 8660dff | 2026-08-06 | feat: 前端聊天界面（流式对话 + 工具审批 + 会话管理） |
 | b4811cf | 2026-08-06 | fix: 修复权限与审批流程 |
 | 6a8483a | 2026-08-06 | feat: 添加流式对话 API |
