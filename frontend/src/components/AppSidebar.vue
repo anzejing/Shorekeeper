@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { onMounted, ref, computed } from 'vue'
+import { useKunAlert } from '@kungal/ui-vue'
 import { useChatStore } from '../stores/chat'
 import type { Session } from '../api/session'
 
@@ -71,9 +72,13 @@ function handleSelectSession(sessionId: string) {
   }
 }
 
-function handleDeleteSession(e: Event, sessionId: string) {
+async function handleDeleteSession(e: Event, sessionId: string) {
   e.stopPropagation()
-  if (confirm('确定删除这个会话？')) {
+  const ok = await useKunAlert({
+    title: '删除会话',
+    message: '确定删除这个会话？此操作不可恢复。',
+  })
+  if (ok) {
     chat.removeSession(sessionId)
   }
 }

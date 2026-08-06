@@ -69,7 +69,6 @@ const showRegenerate = computed(() => {
   return (
     !isUser.value &&
     !isStreaming.value &&
-    props.message.content &&
     props.message.role === 'assistant'
   )
 })
