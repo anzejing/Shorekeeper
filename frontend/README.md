@@ -1,5 +1,17 @@
-# Vue 3 + TypeScript + Vite
+# Shorekeeper Frontend
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Shorekeeper 的前端界面（Vue 3 + TypeScript + Vite + KunUI）。
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+## 开发
+
+```bash
+pnpm install
+pnpm dev        # http://localhost:5173（代理 /api → http://127.0.0.1:8000）
+pnpm build      # 生产构建
+```
+
+## 说明
+
+- 完整项目文档见根目录 [`../README.md`](../README.md)
+- 界面功能：流式对话、工具审批卡片、会话管理、配置管理
+- 技术栈：Vue 3.5 / TypeScript / Vite / Pinia / KunUI / Tailwind CSS v4
