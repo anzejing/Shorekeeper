@@ -10,7 +10,6 @@ const router = useRouter()
 const chat = useChatStore()
 
 const navItems = [
-  { path: '/chat', label: '对话', icon: 'lucide:message-square' },
   { path: '/skills', label: 'Skills', icon: 'lucide:puzzle' },
   { path: '/memory', label: '记忆', icon: 'lucide:brain' },
   { path: '/config', label: '配置', icon: 'lucide:settings' },
