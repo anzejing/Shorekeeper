@@ -90,22 +90,31 @@ async function handleDeny() {
     </div>
 
     <div class="approval-actions">
-      <button
+      <KunButton
         class="btn btn-deny"
+        color="danger"
+        variant="flat"
+        icon
         :disabled="processing"
         @click="handleDeny"
       >
-        <KunIcon name="lucide:x" />
+        <template #icon>
+          <KunIcon name="lucide:x" />
+        </template>
         <span>拒绝</span>
-      </button>
-      <button
+      </KunButton>
+      <KunButton
         class="btn btn-approve"
-        :disabled="processing"
+        color="success"
+        icon
+        :loading="processing"
         @click="handleApprove"
       >
-        <KunIcon name="lucide:check" />
+        <template #icon>
+          <KunIcon name="lucide:check" />
+        </template>
         <span>{{ processing ? '处理中...' : '允许执行' }}</span>
-      </button>
+      </KunButton>
     </div>
   </div>
 </template>
@@ -219,40 +228,5 @@ async function handleDeny() {
 
 .btn {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: none;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-deny {
-  background: #fee2e2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-}
-
-.btn-deny:hover:not(:disabled) {
-  background: #fecaca;
-}
-
-.btn-approve {
-  background: #059669;
-  color: white;
-}
-
-.btn-approve:hover:not(:disabled) {
-  background: #047857;
 }
 </style>

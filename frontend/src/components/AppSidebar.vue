@@ -92,10 +92,18 @@ async function handleDeleteSession(e: Event, sessionId: string) {
         <img src="/favicon-32x32.png" alt="Shorekeeper" class="sidebar-logo" />
         <span>Shorekeeper</span>
       </h1>
-      <button class="new-chat-btn" @click="handleNewChat">
-        <KunIcon name="lucide:plus" />
+      <KunButton
+        class="new-chat-btn"
+        color="primary"
+        variant="flat"
+        icon
+        @click="handleNewChat"
+      >
+        <template #icon>
+          <KunIcon name="lucide:plus" />
+        </template>
         <span>新对话</span>
-      </button>
+      </KunButton>
       <nav class="nav-list">
         <RouterLink
           v-for="item in navItems"
@@ -117,14 +125,16 @@ async function handleDeleteSession(e: Event, sessionId: string) {
       </div>
 
       <!-- 搜索框 -->
-      <div class="session-search">
-        <KunIcon name="lucide:search" class="search-icon" />
-        <input
-          v-model="searchQuery"
-          class="search-input"
-          placeholder="搜索会话..."
-        />
-      </div>
+      <KunInput
+        v-model="searchQuery"
+        class="session-search"
+        placeholder="搜索会话..."
+        size="sm"
+      >
+        <template #prefix>
+          <KunIcon name="lucide:search" class="search-icon" />
+        </template>
+      </KunInput>
 
       <div class="session-list">
         <div v-if="chat.sessionsLoading" class="session-loading">
@@ -197,22 +207,8 @@ async function handleDeleteSession(e: Event, sessionId: string) {
 }
 
 .new-chat-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--kun-color-border, #d1d5db);
-  border-radius: 8px;
-  background: transparent;
-  cursor: pointer;
-  font-size: 14px;
-  color: var(--kun-color-text, #374151);
-  transition: background 0.15s;
-}
-
-.new-chat-btn:hover {
-  background: var(--kun-color-bg-hover, #f3f4f6);
+  justify-content: flex-start;
 }
 
 .nav-list {
@@ -271,33 +267,14 @@ async function handleDeleteSession(e: Event, sessionId: string) {
 
 /* 搜索 */
 .session-search {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  margin: 0 0 4px;
-  border: 1px solid var(--kun-color-border, #e5e7eb);
-  border-radius: 6px;
-  background: var(--kun-color-bg, #fff);
+  margin: 0 0 8px;
+  width: 100%;
 }
 
 .search-icon {
   font-size: 14px;
   color: var(--kun-color-text-secondary, #9ca3af);
   flex-shrink: 0;
-}
-
-.search-input {
-  flex: 1;
-  border: none;
-  outline: none;
-  font-size: 12px;
-  background: transparent;
-  color: var(--kun-color-text, #374151);
-}
-
-.search-input::placeholder {
-  color: var(--kun-color-text-secondary, #9ca3af);
 }
 
 .session-list {

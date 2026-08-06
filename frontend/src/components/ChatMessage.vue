@@ -152,9 +152,19 @@ function getApprovalBlock(block: MessageBlock): ApprovalBlock {
 
         <!-- 重新生成按钮 -->
         <div v-if="showRegenerate" class="message-actions">
-          <button class="action-btn" title="重新生成" @click="emit('regenerate')">
-            <KunIcon name="lucide:refresh-cw" />
-          </button>
+          <KunButton
+            class="action-btn"
+            size="sm"
+            variant="flat"
+            icon
+            is-icon-only
+            title="重新生成"
+            @click="emit('regenerate')"
+          >
+            <template #icon>
+              <KunIcon name="lucide:refresh-cw" />
+            </template>
+          </KunButton>
         </div>
       </template>
     </div>
@@ -364,16 +374,9 @@ function getApprovalBlock(block: MessageBlock): ApprovalBlock {
 }
 .chat-message:hover .message-actions { opacity: 1; }
 .action-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  color: var(--kun-color-text-secondary, #9ca3af);
+  padding: 0;
+  width: 28px;
+  height: 28px;
   font-size: 14px;
-}
-.action-btn:hover {
-  background: var(--kun-color-bg-hover, #f3f4f6);
-  color: var(--kun-color-text, #374151);
 }
 </style>

@@ -67,9 +67,18 @@ function handleRegenerate(msgIndex: number) {
     <div v-if="chat.error" class="chat-error">
       <KunIcon name="lucide:alert-circle" />
       <span>{{ chat.error }}</span>
-      <button class="error-dismiss" @click="chat.error = null">
-        <KunIcon name="lucide:x" />
-      </button>
+      <KunButton
+        class="error-dismiss"
+        size="xs"
+        variant="flat"
+        icon
+        is-icon-only
+        @click="chat.error = null"
+      >
+        <template #icon>
+          <KunIcon name="lucide:x" />
+        </template>
+      </KunButton>
     </div>
 
     <!-- 输入框 -->
@@ -106,10 +115,8 @@ function handleRegenerate(msgIndex: number) {
 
 .error-dismiss {
   margin-left: auto;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--kun-color-error, #ef4444);
-  padding: 2px;
+  padding: 0;
+  width: 24px;
+  height: 24px;
 }
 </style>

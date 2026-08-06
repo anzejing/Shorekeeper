@@ -39,22 +39,32 @@ function handleKeydown(e: KeyboardEvent) {
         :disabled="disabled"
         @keydown="handleKeydown"
       />
-      <button
+      <KunButton
         v-if="canStop"
         class="stop-btn"
+        color="danger"
+        icon
+        is-icon-only
         title="停止生成"
         @click="emit('stop')"
       >
-        <KunIcon name="lucide:square" />
-      </button>
-      <button
+        <template #icon>
+          <KunIcon name="lucide:square" />
+        </template>
+      </KunButton>
+      <KunButton
         v-else
         class="send-btn"
+        color="primary"
+        icon
+        is-icon-only
         :disabled="disabled || !inputText.trim()"
         @click="handleSend"
       >
-        <KunIcon name="lucide:send" />
-      </button>
+        <template #icon>
+          <KunIcon name="lucide:send" />
+        </template>
+      </KunButton>
     </div>
     <div class="input-hint">
       AI 可能会犯错，请核实重要信息。
@@ -105,38 +115,10 @@ function handleKeydown(e: KeyboardEvent) {
 .send-btn, .stop-btn {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
   flex-shrink: 0;
-  transition: all 0.15s;
   font-size: 16px;
-}
-
-.send-btn {
-  background: var(--kun-color-primary, #3b82f6);
-  color: white;
-}
-
-.send-btn:hover:not(:disabled) {
-  background: var(--kun-color-primary-hover, #2563eb);
-}
-
-.send-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.stop-btn {
-  background: #ef4444;
-  color: white;
-}
-
-.stop-btn:hover {
-  background: #dc2626;
 }
 
 .input-hint {
