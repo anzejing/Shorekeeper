@@ -1,14 +1,15 @@
 # Shorekeeper 开发进度
 
-> 最后更新：2026-08-03
+> 最后更新：2026-08-06
 
 ## 架构完成度
 
 ```
 层级                    模块                状态        提交
 ─────────────────────────────────────────────────────────────
-UI (Vue)               -                   ❌ 未开始    -
-API                    chat                ✅ 完成      d8c0ea9
+UI (Vue)               聊天界面             ✅ 完成      8660dff
+UI (Vue)               Skills/记忆管理      ❌ 未开始    -
+API                    chat                ✅ 完成      6a8483a
 API                    memory              ✅ 完成      0860fd7
 API                    skill               ✅ 完成      b5776f3
 API                    permission          ✅ 完成      b7e04f3
@@ -16,7 +17,7 @@ API                    approval            ✅ 完成      b7e04f3
 API                    config              ✅ 完成      (早期)
 API                    runtime             ✅ 完成      (早期)
 ─────────────────────────────────────────────────────────────
-Assistant Service      最小版 (chat API)   ⚠️ 临时      d8c0ea9
+Assistant Service      chat API            ✅ 完成      6a8483a
 ─────────────────────────────────────────────────────────────
 Business: Memory       全部                ✅ 完成      0860fd7
 Business: Skill        全部                ✅ 完成      b5776f3
@@ -38,45 +39,50 @@ LiteLLM                集成                ✅ 完成      (早期)
 | 测试 | 状态 | 说明 |
 |---|---|---|
 | 基本对话 | ✅ | LLM 正常回复 |
+| 流式对话 (SSE) | ✅ | 文本实时增量输出 |
 | Memory write_memory | ✅ | 写入长期记忆 |
-| Memory read_memory | ✅ | 跨会话记忆召回 |
-| Memory search_memory | ✅ | 搜索记忆和历史 |
+| Memory search_memory | ✅ | 跨会话记忆召回 |
 | Permission 拦截 | ✅ | bash_execute 触发 REQUIRE_APPROVAL |
-| Approval 审批 | ✅ | 创建审批 → 审批通过 |
+| Approval 审批通过 | ✅ | 创建审批 → 允许 → 执行 → 回复 |
+| Approval 审批拒绝 | ✅ | 拒绝 → 工具不执行 → AI 说明被拒 |
 | Run 暂停/恢复 | ✅ | WAITING → Resume → COMPLETED |
+| 多轮上下文 | ✅ | 同一会话上下文连贯 |
+| 停止生成 | ✅ | run 正确取消 |
+| 重新生成 | ✅ | 重新生成指定消息 |
+| 会话管理 | ✅ | 新建 / 切换 / 删除（前后端一致） |
 
 ## 待解决问题
 
 | 问题 | 优先级 | 说明 |
 |---|---|---|
-| LLM function calling 兼容性 | P0 | mimo-v2.5 返回文本而非结构化 tool_call，需换模型或适配 |
-| Assistant Service 完善 | P1 | 当前 chat API 是最小版，需要流式、多轮上下文管理 |
-| Permission 默认规则 | P1 | 当前 memory 工具默认 ALLOW，需要根据实际场景调整 |
-| 审批超时处理 | P1 | ApprovalManager 有 expire_stale 但未定时调用 |
+| Skills/记忆管理页面 | P0 | 后端 API 就绪，前端页面未实现 |
+| 会话删除确认框 | P1 | 原生 confirm() 不符合 KunUI 风格 |
+| search_memory 搜索质量 | P1 | LIKE AND 语义，整句查询命中率低 |
+| 审批过期清理 | P1 | expire_stale 存在但未定时调用 |
+| 取消的 run 重新生成 | P1 | 空消息无重新生成按钮 |
+| 会话标题自动生成 | P2 | 当前用消息前 20 字 |
 
 ## 下一步计划
 
 ### 短期（当前迭代）
 
-1. **换一个支持 function calling 的 LLM 做端到端测试**
-   - 验证 Permission + Tool + Approval 全链路
-   - 确认工具调用格式正确
+1. **前端管理页面**
+   - Skills 管理页
+   - 记忆管理页
 
-2. **完善 Assistant Service**
-   - 流式响应（SSE）
-   - 多轮上下文管理
-   - 会话标题自动生成
+2. **P1 体验优化**
+   - KunUI 确认框替换原生 confirm
+   - search_memory 搜索改进（OR 语义 + 中文滑动窗口）
+   - 审批过期定时清理
+   - 取消消息可重新生成
 
 ### 中期
 
-3. **前端 UI**
-   - 聊天界面
-   - 审批对话框
-   - 记忆/Skill/权限管理页面
-
-4. **更多 Tools**
+3. **更多 Tools**
    - web_search
    - python_execute
+
+4. **会话标题自动生成**
 
 ### 长期
 
@@ -87,6 +93,10 @@ LiteLLM                集成                ✅ 完成      (早期)
 
 | 提交 | 日期 | 内容 |
 |---|---|---|
+| 8660dff | 2026-08-06 | feat: 前端聊天界面（流式对话 + 工具审批 + 会话管理） |
+| b4811cf | 2026-08-06 | fix: 修复权限与审批流程 |
+| 6a8483a | 2026-08-06 | feat: 添加流式对话 API |
+| 41ed425 | 2026-08-06 | fix: 修复 Run 执行与恢复逻辑 |
 | 7f19ffb | 2026-08-03 | fix: 修复 Permission 模块的 bug |
 | 3319442 | 2026-08-03 | feat: 添加通用 Tools — bash_execute, read_file, write_file |
 | b7e04f3 | 2026-08-03 | feat: 添加 Permission 模块 — 权限控制与审批管理 |
