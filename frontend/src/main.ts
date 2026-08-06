@@ -2,8 +2,13 @@ import { createApp } from 'vue'
 import { createRouter, createWebHistory, RouterLink } from 'vue-router'
 import { createPinia } from 'pinia'
 import { KunUI, installKunUIConfig } from '@kungal/ui-vue'
+import { registerKunIcons } from '@kungal/ui-core'
+import { CUSTOM_ICONS } from './icons'
 import App from './App.vue'
 import './assets/main.css'
+
+// 注册项目自定义图标（KunUI 仅内置少量 lucide 图标，其余需显式注册）
+registerKunIcons(CUSTOM_ICONS)
 
 const app = createApp(App)
 
