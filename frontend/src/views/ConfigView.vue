@@ -40,7 +40,7 @@ async function handleReset() {
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto">
+  <div class="max-w-3xl mx-auto overflow-y-auto p-6">
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-xl font-bold">配置管理</h2>
       <KunButton color="error" variant="flat" @click="handleReset">重置为默认值</KunButton>

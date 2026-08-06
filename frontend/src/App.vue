@@ -4,12 +4,27 @@ import AppSidebar from './components/AppSidebar.vue'
 </script>
 
 <template>
-  <div class="flex h-screen">
+  <div class="app-layout">
     <AppSidebar />
-    <main class="flex-1 overflow-y-auto p-6">
+    <main class="app-main">
       <RouterView />
     </main>
   </div>
   <KunMessageProvider />
   <KunAlertProvider />
 </template>
+
+<style scoped>
+.app-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+</style>
