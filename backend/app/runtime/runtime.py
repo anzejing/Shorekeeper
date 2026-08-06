@@ -106,6 +106,8 @@ class NativePythonRuntime:
         self._active: dict[str, tuple[asyncio.Task, CancellationToken]] = {}
         # 每个 Run 注入的 tools
         self._run_tools: dict[str, list] = {}
+        # 执行/恢复的并发保护锁（防止同一 run 被并发执行两次）
+        self._execution_locks: dict[str, asyncio.Lock] = {}
 
     async def create_run(self, request: RunRequest) -> RunHandle:
         """创建 Run。"""
@@ -154,6 +156,12 @@ class NativePythonRuntime:
 
     async def execute(self, run_id: RunId) -> None:
         """启动 Run 执行。"""
+        lock = self._execution_locks.setdefault(run_id, asyncio.Lock())
+        async with lock:
+            await self._execute_locked(run_id)
+
+    async def _execute_locked(self, run_id: RunId) -> None:
+        """execute 的临界区实现（调用方须持有 per-run 锁）。"""
         snapshot = await self._get_snapshot(run_id)
 
         # 状态机检查
@@ -174,6 +182,9 @@ class NativePythonRuntime:
         snapshot.version = sm.version
         await self._run_store.save(snapshot)
         await self._publish_state_change(run_id, snapshot.session_id, "created", "running")
+
+        # 同步拦截器上下文（run_id / session_id 等）
+        await self._sync_interceptor_context(snapshot)
 
         # 创建 CancellationToken 并启动 Agent Loop
         cancellation = CancellationToken()
@@ -248,6 +259,9 @@ class NativePythonRuntime:
         snapshot.status = RunStatus.RUNNING
         snapshot.version = sm.version
         await self._run_store.save(snapshot)
+
+        # 同步拦截器上下文（run_id / session_id 等）
+        await self._sync_interceptor_context(snapshot)
 
         # 发布恢复事件
         await self._publisher.publish(
@@ -408,7 +422,57 @@ class NativePythonRuntime:
 
         return await self._get_snapshot(run_id)
 
+    async def wait_until_terminal(
+        self, run_id: RunId, timeout: float = 300.0
+    ) -> RunSnapshot:
+        """等待 Run 到达终态（含挂起 → resume 的多次执行）。
+
+        场景：run 因审批挂起后由 resume API 恢复执行，
+        本方法会持续等待直到 run 进入终态（completed / failed / cancelled）。
+        """
+        deadline = asyncio.get_event_loop().time() + timeout
+        while True:
+            if asyncio.get_event_loop().time() > deadline:
+                raise asyncio.TimeoutError(f"Run {run_id} 等待超时")
+
+            snapshot = await self._get_snapshot(run_id)
+            sm = RunStateMachine(run_id, snapshot.status, snapshot.version)
+            if sm.is_terminal:
+                return snapshot
+
+            task, _ = self._active.get(run_id, (None, None))
+            if task is not None:
+                # 有活跃 task（首次执行或 resume 后）→ 等待完成。
+                # 注意：不能用 wait_for（超时会取消 task），用 asyncio.wait 只等待不取消。
+                try:
+                    done, _ = await asyncio.wait({task}, timeout=10.0)
+                except asyncio.TimeoutError:
+                    continue
+                if task not in done:
+                    continue  # 任务仍在运行，继续等待
+                self._active.pop(run_id, None)
+                continue
+
+            # 无活跃 task 且非终态（WAITING 挂起中）→ 等待 resume
+            await asyncio.sleep(1.0)
+
     # ─── 内部辅助 ─────────────────────────────────────────
+
+    async def _sync_interceptor_context(self, snapshot: RunSnapshot) -> None:
+        """同步 PermissionInterceptor 的 run 上下文。
+
+        interceptor 创建审批时需要 run_id / session_id，
+        这些值在每次 execute / resume 时必须更新。
+        """
+        interceptor = self._interceptor
+        update = getattr(interceptor, "update_run_context", None)
+        if update is not None:
+            update(
+                run_id=snapshot.run_id,
+                session_id=snapshot.session_id,
+                run_version=snapshot.version,
+                execution_revision=snapshot.execution_attempt,
+            )
 
     async def _get_snapshot(self, run_id: str) -> RunSnapshot:
         """获取 Run 快照，不存在则抛异常。"""
