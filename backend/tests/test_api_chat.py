@@ -69,7 +69,7 @@ async def _setup(
     # Skill
     skill_store = SQLiteSkillStore(db)
     skill_loader = SkillLoader(tmp_path / "skills", skill_store)
-    plugin_loader = PluginLoader(tmp_path / "plugins", skill_loader)
+    plugin_loader = PluginLoader(tmp_path / "plugins", skill_loader, skill_store)
     skill_service = SkillService(skill_store, skill_loader, plugin_loader)
     await skill_service.initialize()
 
