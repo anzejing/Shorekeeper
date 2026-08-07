@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useKunMessage, useKunAlert } from '@kungal/ui-vue'
-import { useMemoryStore } from '../stores/memory'
+import { useMemoryStore, MEMORY_CATEGORIES } from '../stores/memory'
 import SessionMessagesDrawer from '../components/SessionMessagesDrawer.vue'
+import MemoryEditDrawer from '../components/MemoryEditDrawer.vue'
 import type { Session } from '../api/session'
+import type { MemoryEntry } from '../api/memory'
 
 const store = useMemoryStore()
 
@@ -11,7 +13,29 @@ onMounted(() => {
   store.loadSessions()
 })
 
-const tabs = [{ value: 'history', textValue: '对话历史' }]
+// 切换 Tab 时懒加载对应数据
+watch(
+  () => store.activeTab,
+  (tab) => {
+    if (tab === 'memories' && store.memories.length === 0) {
+      store.loadMemories()
+    }
+  },
+)
+
+const tabs = [
+  { value: 'history', textValue: '对话历史' },
+  { value: 'memories', textValue: '长期记忆' },
+]
+
+const categoryOptions = [
+  { value: null, label: '全部分类' },
+  ...MEMORY_CATEGORIES.map((c) => ({ value: c.value, label: c.label })),
+]
+
+function categoryLabel(value: string): string {
+  return MEMORY_CATEGORIES.find((c) => c.value === value)?.label || value
+}
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', {
@@ -41,13 +65,53 @@ function closeDrawer() {
   store.viewingSession = null
   store.messages = []
 }
+
+// 按当前 Tab 刷新对应数据
+function handleRefresh() {
+  if (store.activeTab === 'memories') store.loadMemories()
+  else store.loadSessions()
+}
+
+async function handleSaveMemory(
+  edits: { content: string; category: string; confidence: number },
+) {
+  if (!store.editingMemory) return
+  store.savingMemory = true
+  try {
+    const updated = await store.saveMemoryEntry(store.editingMemory.memory_id, edits)
+    store.editingMemory = updated
+    useKunMessage('记忆已更新', 'success')
+  } catch (e: any) {
+    useKunMessage(e.message || '保存失败', 'error')
+  } finally {
+    store.savingMemory = false
+  }
+}
+
+async function handleDeleteMemory(m: MemoryEntry) {
+  const ok = await useKunAlert({
+    title: '删除记忆',
+    message: '确定删除这条长期记忆？此操作不可恢复。',
+  })
+  if (!ok) return
+  try {
+    await store.removeMemory(m.memory_id)
+    useKunMessage('记忆已删除', 'success')
+  } catch (e: any) {
+    useKunMessage(e.message || '删除失败', 'error')
+  }
+}
+
+function closeMemoryDrawer() {
+  store.editingMemory = null
+}
 </script>
 
 <template>
   <div class="max-w-3xl mx-auto overflow-y-auto p-6 w-full">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-xl font-bold">记忆管理</h2>
-      <KunButton variant="flat" icon @click="store.loadSessions()">
+      <KunButton variant="flat" icon @click="handleRefresh">
         <template #icon>
           <KunIcon name="lucide:refresh-cw" />
         </template>
@@ -142,12 +206,93 @@ function closeDrawer() {
       </template>
     </KunTabPanel>
 
+    <!-- ─── 长期记忆 Tab ─── -->
+    <KunTabPanel
+      v-if="store.activeTab === 'memories'"
+      value="memories"
+      active="memories"
+    >
+      <!-- 分类筛选 -->
+      <KunSelect
+        v-model="store.memoryCategoryFilter"
+        :options="categoryOptions"
+        placeholder="全部分类"
+        size="sm"
+        class="w-40 mb-4"
+      />
+
+      <!-- Loading -->
+      <div v-if="store.memoriesLoading" class="flex justify-center py-12">
+        <KunLoading />
+      </div>
+
+      <!-- 列表 -->
+      <template v-else>
+        <div v-if="store.filteredMemories.length === 0" class="py-12">
+          <KunNull description="暂无长期记忆" />
+        </div>
+
+        <div v-else class="flex flex-col gap-2">
+          <KunCard
+            v-for="m in store.filteredMemories"
+            :key="m.memory_id"
+            variant="flat"
+            class="p-4"
+            clickable
+            is-hoverable
+            @click="store.editingMemory = m"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <KunChip size="xs" variant="flat" color="primary">
+                    {{ categoryLabel(m.category) }}
+                  </KunChip>
+                  <span class="text-xs text-gray-400">
+                    置信度 {{ Math.round(m.confidence * 100) }}%
+                  </span>
+                </div>
+                <p class="text-sm text-gray-700 line-clamp-2 mb-1">
+                  {{ m.content }}
+                </p>
+                <div class="text-xs text-gray-400">
+                  {{ formatTime(m.updated_at) }}
+                </div>
+              </div>
+              <div class="flex-shrink-0" @click.stop>
+                <KunButton
+                  size="xs"
+                  variant="flat"
+                  color="error"
+                  is-icon-only
+                  icon
+                  @click="handleDeleteMemory(m)"
+                >
+                  <template #icon>
+                    <KunIcon name="lucide:trash-2" />
+                  </template>
+                </KunButton>
+              </div>
+            </div>
+          </KunCard>
+        </div>
+      </template>
+    </KunTabPanel>
+
     <!-- 会话消息抽屉 -->
     <SessionMessagesDrawer
       :session="store.viewingSession"
       :messages="store.messages"
       :loading="store.messagesLoading"
       @close="closeDrawer"
+    />
+
+    <!-- 长期记忆编辑抽屉 -->
+    <MemoryEditDrawer
+      :memory="store.editingMemory"
+      :saving="store.savingMemory"
+      @close="closeMemoryDrawer"
+      @save="handleSaveMemory"
     />
   </div>
 </template>
