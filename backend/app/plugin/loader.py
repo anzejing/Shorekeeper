@@ -16,6 +16,7 @@ from pathlib import Path
 from app.plugin.manifest import ManifestError, PluginManifest, load_manifest
 from app.skill.loader import SkillLoader
 from app.skill.models import SKILL_FILENAME, SkillInfo
+from app.skill.store import SQLiteSkillStore
 
 log = logging.getLogger(__name__)
 
@@ -27,9 +28,11 @@ class PluginLoader:
         self,
         plugins_dir: Path,
         skill_loader: SkillLoader,
+        store: SQLiteSkillStore | None = None,
     ) -> None:
         self._plugins_dir = plugins_dir
         self._skill_loader = skill_loader
+        self._store = store
 
     async def scan(self) -> list[SkillInfo]:
         """扫描插件目录，返回所有插件的 Skill（逻辑名 = 'plugin-name/skill-name'）。
@@ -63,7 +66,7 @@ class PluginLoader:
 
             # 发现 skills（§6.1）
             try:
-                skills = self._discover_skills(plugin_dir, manifest)
+                skills = await self._discover_skills(plugin_dir, manifest)
             except Exception:
                 log.exception("插件 %s 的 skills 发现失败", manifest.name)
                 continue
@@ -75,7 +78,7 @@ class PluginLoader:
 
         return results
 
-    def _discover_skills(
+    async def _discover_skills(
         self, plugin_dir: Path, manifest: PluginManifest
     ) -> list[SkillInfo]:
         """发现插件 skills/ 下的所有 Skill（§7.1 不递归）。"""
@@ -120,6 +123,10 @@ class PluginLoader:
                 plugin_name=manifest.name,
             )
             found.append(info)
+
+            # 同步到 Store（与 SkillLoader 一致：新 Skill 自动创建记录）
+            if self._store is not None:
+                await self._store.upsert(info.name)
 
         return found
 

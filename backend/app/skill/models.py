@@ -103,6 +103,14 @@ class UpdateSkillRequest(BaseModel):
     config: dict[str, Any] | None = None
 
 
+class InstallResponse(BaseModel):
+    """统一安装响应（SKILL.md / zip / tar.gz 自动判断）。"""
+
+    type: str                              # 'skill' | 'plugin'
+    skills: list[SkillResponse]
+    plugin_name: str | None = None         # type === 'plugin' 时返回
+
+
 # ─── SKILL.md 解析结果 ────────────────────────────────────
 
 

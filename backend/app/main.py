@@ -105,7 +105,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     skills_dir = config_service.data_dir / "skills"
     skill_loader = SkillLoader(skills_dir, skill_store)
     plugins_dir = config_service.data_dir / "plugins"
-    plugin_loader = PluginLoader(plugins_dir, skill_loader)
+    plugin_loader = PluginLoader(plugins_dir, skill_loader, skill_store)
     skill_service = SkillService(skill_store, skill_loader, plugin_loader)
     await skill_service.initialize()
     init_skill_api(skill_service)

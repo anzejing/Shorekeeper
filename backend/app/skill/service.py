@@ -48,6 +48,16 @@ class SkillService:
         # 内存缓存：name（逻辑名）→ SkillInfo（启动时加载）
         self._info_cache: dict[str, SkillInfo] = {}
 
+    @property
+    def skills_dir(self) -> Path:
+        """独立 Skill 安装目录。"""
+        return self._loader._skills_dir
+
+    @property
+    def plugins_dir(self) -> Path:
+        """插件安装目录。"""
+        return self._plugin_loader._plugins_dir
+
     async def initialize(self) -> None:
         """启动时调用：扫描 skills 目录 + 插件目录，加载所有 Skill。"""
         infos = await self._loader.scan()
@@ -170,7 +180,9 @@ class SkillService:
         # 写入附带文件
         if attachments:
             for filename, content in attachments.items():
-                (skill_dir / filename).write_bytes(content)
+                dest = skill_dir / filename
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(content)
 
         # 重新解析（获取正确的 path 和 has_scripts）
         info = self._loader._parse_skill_md(skill_md_path)

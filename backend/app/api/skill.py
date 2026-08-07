@@ -1,13 +1,19 @@
 """Skill HTTP API。
 
-提供 Skill 管理、安装、卸载的 REST 接口。
+提供 Skill 管理、统一安装（SKILL.md / zip / tar.gz 自动判断）、插件删除的 REST 接口。
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 
-from app.skill.models import SkillListResponse, SkillResponse, UpdateSkillRequest
+from app.plugin.installer import InstallError, install_bundle
+from app.skill.models import (
+    InstallResponse,
+    SkillListResponse,
+    SkillResponse,
+    UpdateSkillRequest,
+)
 from app.skill.service import SkillService
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
@@ -71,26 +77,43 @@ async def update_skill(
 # ─── 安装/卸载 ───────────────────────────────────────────
 
 
-@router.post("/install", response_model=SkillResponse, status_code=201)
+@router.post("/install", response_model=InstallResponse, status_code=201)
 async def install_skill(
-    skill_md: UploadFile = File(description="SKILL.md 文件"),
-    target_name: str | None = Form(default=None, description="目标目录名"),
-) -> SkillResponse:
-    """安装 Skill（上传 SKILL.md 文件）。"""
+    file: UploadFile = File(description="SKILL.md 文件或压缩包（.zip / .tar.gz）"),
+    target_name: str | None = Form(default=None, description="目标目录名（仅单 SKILL.md 生效）"),
+) -> InstallResponse:
+    """统一安装入口：自动判断 SKILL.md / zip / tar.gz。"""
     service = _get_service()
 
-    try:
-        content = (await skill_md.read()).decode("utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="SKILL.md 必须是 UTF-8 编码")
+    content = await file.read()
+    filename = file.filename or "skill.md"
 
     try:
-        return await service.install_skill(
-            skill_md_content=content,
-            target_name=target_name,
+        # 兼容旧调用：单 SKILL.md + 指定目录名
+        if target_name and content.lstrip().startswith(b"---"):
+            skill = await service.install_skill(
+                skill_md_content=content.decode("utf-8"),
+                target_name=target_name,
+            )
+            return InstallResponse(type="skill", skills=[skill])
+
+        result = await install_bundle(
+            content,
+            filename,
+            skill_service=service,
+            skills_dir=service.skills_dir,
+            plugins_dir=service.plugins_dir,
         )
-    except ValueError as e:
+    except (UnicodeDecodeError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except InstallError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return InstallResponse(
+        type=result.type,
+        skills=result.skills,
+        plugin_name=result.plugin_name,
+    )
 
 
 @router.delete("/{name}", status_code=204)
@@ -107,7 +130,19 @@ async def uninstall_skill(name: str) -> None:
 
 @router.post("/reload", response_model=SkillListResponse)
 async def reload_skills() -> SkillListResponse:
-    """重新扫描 skills 目录（手动安装 Skill 后调用）。"""
+    """重新扫描 skills 目录与插件目录（手动安装 Skill 后调用）。"""
     service = _get_service()
     await service.reload()
     return await service.list_skills()
+
+
+# ─── 插件管理 ─────────────────────────────────────────────
+
+
+@router.delete("/plugins/{plugin_name}", status_code=204)
+async def uninstall_plugin(plugin_name: str) -> None:
+    """卸载插件（删除插件目录及其所有 Skill 记录）。"""
+    service = _get_service()
+    deleted = await service.uninstall_plugin(plugin_name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"插件不存在: {plugin_name}")

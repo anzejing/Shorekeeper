@@ -25,7 +25,7 @@ async def _setup(skills_dir: Path) -> tuple[SkillService, FastAPI]:
     await init_skill_db(db)
     store = SQLiteSkillStore(db)
     loader = SkillLoader(skills_dir, store)
-    plugin_loader = PluginLoader(skills_dir.parent / "plugins", loader)
+    plugin_loader = PluginLoader(skills_dir.parent / "plugins", loader, store)
     service = SkillService(store, loader, plugin_loader)
     await service.initialize()
     init_skill_api(service)
@@ -163,13 +163,15 @@ category: custom
         ) as client:
             resp = await client.post(
                 "/api/skills/install",
-                files={"skill_md": ("SKILL.md", skill_md.encode(), "text/markdown")},
+                files={"file": ("SKILL.md", skill_md.encode(), "text/markdown")},
             )
 
         assert resp.status_code == 201
         data = resp.json()
-        assert data["name"] == "new-skill"
-        assert data["enabled"] is True
+        assert data["type"] == "skill"
+        assert len(data["skills"]) == 1
+        assert data["skills"][0]["name"] == "new-skill"
+        assert data["skills"][0]["enabled"] is True
 
         # 验证文件已写入
         assert (tmp_path / "new-skill" / "SKILL.md").exists()
