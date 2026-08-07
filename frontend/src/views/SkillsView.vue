@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
+import { useKunMessage } from '@kungal/ui-vue'
 import { useSkillsStore } from '../stores/skills'
+import SkillDetailDrawer from '../components/SkillDetailDrawer.vue'
+import type { Skill } from '../api/skill'
 
 const store = useSkillsStore()
 
@@ -8,11 +11,79 @@ onMounted(() => {
   store.load()
 })
 
-// 分类筛选选项：全部 + 数据中的分类（动态生成）
+// ─── 分类筛选选项（动态生成） ───
 const categoryOptions = [
   { value: null, label: '全部分类' },
   ...store.categories.map((c) => ({ value: c, label: c })),
 ]
+
+// ─── 详情抽屉 ───
+const selectedSkill = ref<Skill | null>(null)
+const savingConfig = ref(false)
+
+function openDetail(skill: Skill) {
+  selectedSkill.value = skill
+}
+
+function closeDetail() {
+  selectedSkill.value = null
+}
+
+async function handleSaveConfig(config: Record<string, any>) {
+  if (!selectedSkill.value) return
+  savingConfig.value = true
+  try {
+    const updated = await store.saveConfig(selectedSkill.value.name, config)
+    selectedSkill.value = updated
+    useKunMessage('配置已保存', 'success')
+  } catch (e: any) {
+    useKunMessage(e.message || '保存失败', 'error')
+  } finally {
+    savingConfig.value = false
+  }
+}
+
+async function handleUninstall(name: string) {
+  try {
+    await store.uninstall(name)
+    selectedSkill.value = null
+    useKunMessage(`已卸载 Skill: ${name}`, 'success')
+  } catch (e: any) {
+    useKunMessage(e.message || '卸载失败', 'error')
+  }
+}
+
+// ─── 安装弹窗 ───
+const showInstallModal = ref(false)
+const installFile = ref<File | null>(null)
+const installTargetName = ref('')
+const installing = ref(false)
+const installError = ref<string | null>(null)
+
+function openInstallModal() {
+  installFile.value = null
+  installTargetName.value = ''
+  installError.value = null
+  showInstallModal.value = true
+}
+
+async function handleInstall() {
+  if (!installFile.value) {
+    installError.value = '请选择 SKILL.md 文件'
+    return
+  }
+  installing.value = true
+  installError.value = null
+  try {
+    await store.install(installFile.value, installTargetName.value.trim() || undefined)
+    showInstallModal.value = false
+    useKunMessage('Skill 安装成功', 'success')
+  } catch (e: any) {
+    installError.value = e.message || '安装失败'
+  } finally {
+    installing.value = false
+  }
+}
 </script>
 
 <template>
@@ -29,6 +100,12 @@ const categoryOptions = [
             <KunIcon name="lucide:refresh-cw" />
           </template>
           <span>刷新</span>
+        </KunButton>
+        <KunButton variant="flat" color="primary" icon @click="openInstallModal">
+          <template #icon>
+            <KunIcon name="lucide:upload" />
+          </template>
+          <span>安装</span>
         </KunButton>
       </div>
     </div>
@@ -71,7 +148,11 @@ const categoryOptions = [
     <template v-else>
       <div v-if="store.filteredSkills.length === 0" class="py-12">
         <KunNull
-          :description="store.searchQuery || store.categoryFilter ? '没有匹配的 Skill' : '暂无 Skill，点击右上角刷新'"
+          :description="
+            store.searchQuery || store.categoryFilter
+              ? '没有匹配的 Skill'
+              : '暂无 Skill，可点击右上角「安装」上传 SKILL.md'
+          "
         />
       </div>
 
@@ -81,6 +162,9 @@ const categoryOptions = [
           :key="skill.name"
           variant="flat"
           class="p-4"
+          clickable
+          is-hoverable
+          @click="openDetail(skill)"
         >
           <div class="flex items-start justify-between gap-4">
             <!-- 左侧：信息 -->
@@ -109,18 +193,77 @@ const categoryOptions = [
               </div>
             </div>
 
-            <!-- 右侧：启用开关 -->
-            <KunSwitch
-              :model-value="skill.enabled"
-              size="sm"
-              @update:model-value="
-                store.toggleEnabled(skill.name, $event).catch(() => {})
-              "
-            />
+            <!-- 右侧：启用开关（点击不冒泡到卡片） -->
+            <div class="flex-shrink-0" @click.stop>
+              <KunSwitch
+                :model-value="skill.enabled"
+                size="sm"
+                @update:model-value="
+                  store.toggleEnabled(skill.name, $event).catch(() => {})
+                "
+              />
+            </div>
           </div>
         </KunCard>
       </div>
     </template>
+
+    <!-- 详情抽屉 -->
+    <SkillDetailDrawer
+      :skill="selectedSkill"
+      :saving="savingConfig"
+      @close="closeDetail"
+      @save-config="handleSaveConfig"
+      @uninstall="handleUninstall"
+    />
+
+    <!-- 安装弹窗 -->
+    <KunModal
+      v-model="showInstallModal"
+      size="md"
+      :is-dismissable="true"
+      :is-show-close-button="true"
+    >
+      <h3 class="text-base font-bold mb-4">安装 Skill</h3>
+      <div class="flex flex-col gap-4">
+        <div>
+          <div class="text-sm font-medium mb-2">SKILL.md 文件</div>
+          <KunFileInput
+            v-model="installFile"
+            accept=".md"
+            :disabled="installing"
+          />
+          <p class="text-xs text-gray-400 mt-1">
+            兼容 skills.sh / Claude Code 格式（YAML frontmatter：name、description 必填）
+          </p>
+        </div>
+        <div>
+          <div class="text-sm font-medium mb-2">目录名（可选）</div>
+          <KunInput
+            v-model="installTargetName"
+            placeholder="不填则使用 frontmatter 中的 name"
+            :disabled="installing"
+          />
+        </div>
+
+        <KunInfo
+          v-if="installError"
+          color="error"
+          :description="installError"
+        />
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <KunButton variant="flat" :disabled="installing" @click="showInstallModal = false">
+            取消
+          </KunButton>
+          <KunButton color="primary" variant="flat" :loading="installing" @click="handleInstall">
+            安装
+          </KunButton>
+        </div>
+      </template>
+    </KunModal>
   </div>
 </template>
 
