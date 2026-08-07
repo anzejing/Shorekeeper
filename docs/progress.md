@@ -22,7 +22,7 @@ API                    runtime             ✅ 完成      (早期)
 Assistant Service      chat API            ✅ 完成      6a8483a
 ─────────────────────────────────────────────────────────────
 Business: Memory       全部                ✅ 完成      0860fd7
-Business: Skill        全部                ✅ 完成      b5776f3
+Business: Skill        全部 + 插件支持      ✅ 完成      b5776f3 / 1b8ce30
 Business: Permission   全部                ✅ 完成      b7e04f3
 Business: Workflow      -                   ❌ 预留      -
 ─────────────────────────────────────────────────────────────
@@ -57,6 +57,34 @@ LiteLLM                集成                ✅ 完成      (早期)
 | 审批过期清理 | ✅ | 定时任务自动标记 expired |
 
 ## 开发记录
+
+### 2026-08-07（Agent Plugins 插件适配 + 统一安装入口）
+
+**功能**：适配 [Agent Plugins v1.0.0](https://agent-plugins.org) 标准的 Skills 组件 + 统一安装入口：
+
+| 提交 | 内容 |
+|---|---|
+| 1b8ce30 | 插件发现：plugin.json 校验（闭包 schema/name 约束/路径安全）+ 插件目录扫描 + 命名空间（plugin-name/skill-name）+ SKILL.md 兼容 metadata.version |
+| 1c16256 | 统一安装：POST /api/skills/install 自动判断 SKILL.md / zip / tar.gz（zip slip/bomb/符号链接防护）；插件删除 API |
+| fe1550d | 前端：来源标记、安装弹窗多格式、插件删除（确认框提示影响范围） |
+
+**插件包格式**：`~/.shorekeeper/plugins/{name}/`（plugin.json + skills/*/SKILL.md），逻辑名 `plugin-name/skill-name`。
+
+**统一安装自动判断**：
+- 单 SKILL.md → 独立 Skill（原逻辑）
+- 压缩包含 plugin.json → 插件（plugins/ + 命名空间）
+- 压缩包为 Skill 目录 → 独立 Skill（含附带脚本）
+
+**浏览器端到端测试**覆盖：插件 zip 安装（来源标记/提示）、单 SKILL.md 安装、非法文件 400、插件删除（确认框 + API/FS/UI 一致）。
+
+**修复的 Bug（2 个）**：
+
+| # | 问题 | 修复 |
+|---|---|---|
+| 1 | PluginLoader 未同步 store，插件 skill 状态不持久化 | scan 时 upsert 数据库记录 |
+| 2 | install_skill 写附带文件时未创建子目录 | 写入前 mkdir 父目录 |
+
+**验证**：前端 build 通过，后端 337 测试（+47 新增）无回归。
 
 ### 2026-08-07（记忆管理页面 + 浏览器端到端测试）
 
