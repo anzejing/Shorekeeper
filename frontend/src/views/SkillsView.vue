@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useKunMessage } from '@kungal/ui-vue'
 import { useSkillsStore } from '../stores/skills'
 import SkillDetailDrawer from '../components/SkillDetailDrawer.vue'
@@ -11,11 +11,11 @@ onMounted(() => {
   store.load()
 })
 
-// ─── 分类筛选选项（动态生成） ───
-const categoryOptions = [
+// ─── 分类筛选选项（动态生成，需响应式以等待列表加载） ───
+const categoryOptions = computed(() => [
   { value: null, label: '全部分类' },
   ...store.categories.map((c) => ({ value: c, label: c })),
-]
+])
 
 // ─── 详情抽屉 ───
 const selectedSkill = ref<Skill | null>(null)
@@ -253,16 +253,14 @@ async function handleInstall() {
         />
       </div>
 
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <KunButton variant="flat" :disabled="installing" @click="showInstallModal = false">
-            取消
-          </KunButton>
-          <KunButton color="primary" variant="flat" :loading="installing" @click="handleInstall">
-            安装
-          </KunButton>
-        </div>
-      </template>
+      <div class="flex justify-end gap-2 mt-6">
+        <KunButton variant="flat" :disabled="installing" @click="showInstallModal = false">
+          取消
+        </KunButton>
+        <KunButton color="primary" variant="flat" :loading="installing" @click="handleInstall">
+          安装
+        </KunButton>
+      </div>
     </KunModal>
   </div>
 </template>

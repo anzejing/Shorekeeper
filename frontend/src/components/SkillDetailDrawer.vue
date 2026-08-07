@@ -30,6 +30,11 @@ watch(
   { immediate: true },
 )
 
+// 输入变化时清除错误（重新编辑即重新校验）
+watch(configText, () => {
+  if (configError.value) configError.value = null
+})
+
 function handleSave() {
   if (!props.skill) return
   let parsed: unknown
