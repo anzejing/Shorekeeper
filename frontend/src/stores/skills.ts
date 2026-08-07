@@ -6,8 +6,10 @@ import {
   updateSkill,
   installSkill,
   uninstallSkill,
+  deletePlugin,
   reloadSkills,
   type Skill,
+  type InstallResponse,
 } from '../api/skill'
 
 export const useSkillsStore = defineStore('skills', () => {
@@ -84,17 +86,26 @@ export const useSkillsStore = defineStore('skills', () => {
     return updated
   }
 
-  /** 安装 Skill（上传 SKILL.md） */
-  async function install(file: File, targetName?: string) {
-    const skill = await installSkill(file, targetName)
+  /** 安装（SKILL.md / zip / tar.gz 自动判断） */
+  async function install(
+    file: File,
+    targetName?: string,
+  ): Promise<InstallResponse> {
+    const result = await installSkill(file, targetName)
     await load()
-    return skill
+    return result
   }
 
   /** 卸载 Skill */
   async function uninstall(name: string) {
     await uninstallSkill(name)
     skills.value = skills.value.filter((s) => s.name !== name)
+  }
+
+  /** 卸载插件（删除整个插件及其所有 Skill） */
+  async function uninstallPlugin(pluginName: string) {
+    await deletePlugin(pluginName)
+    skills.value = skills.value.filter((s) => s.plugin_name !== pluginName)
   }
 
   /** 重新扫描 skills 目录 */
@@ -126,6 +137,7 @@ export const useSkillsStore = defineStore('skills', () => {
     saveConfig,
     install,
     uninstall,
+    uninstallPlugin,
     reload,
   }
 })

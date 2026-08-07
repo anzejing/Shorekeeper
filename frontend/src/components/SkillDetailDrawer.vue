@@ -54,6 +54,16 @@ function handleSave() {
 
 async function handleUninstall() {
   if (!props.skill) return
+  // 插件 skill → 卸载整个插件
+  if (props.skill.plugin_name) {
+    const ok = await useKunAlert({
+      title: '卸载插件',
+      message: `确定卸载插件「${props.skill.plugin_name}」？将删除插件目录及其所有 Skill，此操作不可恢复。`,
+    })
+    if (ok) emit('uninstall', props.skill.name)
+    return
+  }
+  // 独立 skill
   const ok = await useKunAlert({
     title: '卸载 Skill',
     message: `确定卸载 "${props.skill.name}"？将删除 Skill 目录与数据库记录，此操作不可恢复。`,

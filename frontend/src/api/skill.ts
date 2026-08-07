@@ -10,6 +10,7 @@ export interface Skill {
   system_prompt: string
   path: string
   has_scripts: boolean
+  plugin_name: string | null
   config: Record<string, any>
   installed_at: string | null
 }
@@ -17,6 +18,13 @@ export interface Skill {
 export interface SkillListResponse {
   skills: Skill[]
   total: number
+}
+
+/** 统一安装响应（SKILL.md / zip / tar.gz 自动判断） */
+export interface InstallResponse {
+  type: 'skill' | 'plugin'
+  skills: Skill[]
+  plugin_name?: string | null
 }
 
 async function parseError(res: Response, fallback: string): Promise<Error> {
@@ -54,20 +62,28 @@ export async function updateSkill(
   return res.json()
 }
 
-/** 安装 Skill（上传 SKILL.md 文件） */
+/** 统一安装入口（SKILL.md 文件或 zip/tar.gz 压缩包） */
 export async function installSkill(
   file: File,
   targetName?: string,
-): Promise<Skill> {
+): Promise<InstallResponse> {
   const form = new FormData()
-  form.append('skill_md', file)
+  form.append('file', file)
   if (targetName) form.append('target_name', targetName)
   const res = await fetch(`${BASE}/install`, {
     method: 'POST',
     body: form,
   })
-  if (!res.ok) throw await parseError(res, `安装 Skill 失败: ${res.status}`)
+  if (!res.ok) throw await parseError(res, `安装失败: ${res.status}`)
   return res.json()
+}
+
+/** 卸载插件（删除整个插件及其所有 Skill） */
+export async function deletePlugin(pluginName: string): Promise<void> {
+  const res = await fetch(`${BASE}/plugins/${encodeURIComponent(pluginName)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) throw await parseError(res, `卸载插件失败: ${res.status}`)
 }
 
 /** 卸载 Skill */

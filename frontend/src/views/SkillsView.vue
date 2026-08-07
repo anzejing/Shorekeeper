@@ -44,6 +44,19 @@ async function handleSaveConfig(config: Record<string, any>) {
 }
 
 async function handleUninstall(name: string) {
+  const skill = selectedSkill.value
+  // 插件 skill → 卸载整个插件
+  if (skill?.plugin_name) {
+    try {
+      await store.uninstallPlugin(skill.plugin_name)
+      selectedSkill.value = null
+      useKunMessage(`已卸载插件: ${skill.plugin_name}`, 'success')
+    } catch (e: any) {
+      useKunMessage(e.message || '卸载失败', 'error')
+    }
+    return
+  }
+  // 独立 skill
   try {
     await store.uninstall(name)
     selectedSkill.value = null
@@ -69,15 +82,25 @@ function openInstallModal() {
 
 async function handleInstall() {
   if (!installFile.value) {
-    installError.value = '请选择 SKILL.md 文件'
+    installError.value = '请选择文件'
     return
   }
   installing.value = true
   installError.value = null
   try {
-    await store.install(installFile.value, installTargetName.value.trim() || undefined)
+    const result = await store.install(
+      installFile.value,
+      installTargetName.value.trim() || undefined,
+    )
     showInstallModal.value = false
-    useKunMessage('Skill 安装成功', 'success')
+    if (result.type === 'plugin') {
+      useKunMessage(
+        `已安装插件 ${result.plugin_name}（含 ${result.skills.length} 个 Skill）`,
+        'success',
+      )
+    } else {
+      useKunMessage(`已安装 Skill: ${result.skills[0]?.name || ''}`, 'success')
+    }
   } catch (e: any) {
     installError.value = e.message || '安装失败'
   } finally {
@@ -179,6 +202,13 @@ async function handleInstall() {
                 >
                   {{ skill.category }}
                 </KunChip>
+                <KunChip
+                  v-if="skill.plugin_name"
+                  size="xs"
+                  variant="flat"
+                >
+                  插件: {{ skill.plugin_name }}
+                </KunChip>
                 <KunChip v-if="skill.has_scripts" size="xs" variant="flat">
                   scripts
                 </KunChip>
@@ -230,11 +260,11 @@ async function handleInstall() {
           <div class="text-sm font-medium mb-2">SKILL.md 文件</div>
           <KunFileInput
             v-model="installFile"
-            accept=".md"
+            accept=".md,.zip,.tar.gz"
             :disabled="installing"
           />
           <p class="text-xs text-gray-400 mt-1">
-            兼容 skills.sh / Claude Code 格式（YAML frontmatter：name、description 必填）
+            支持 SKILL.md 文件或插件压缩包（.zip / .tar.gz，含 plugin.json）
           </p>
         </div>
         <div>
