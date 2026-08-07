@@ -34,7 +34,7 @@ Runtime Adapter        全部                ✅ 完成      (早期)
 LiteLLM                集成                ✅ 完成      (早期)
 ─────────────────────────────────────────────────────────────
 数据目录               ~/.shorekeeper/     ✅ 完成      64a8174
-测试                   后端 290 个          ✅ 通过      (最新)
+测试                   后端 337 个          ✅ 通过      (最新)
 ```
 
 ## 已验证的端到端流程
@@ -57,6 +57,15 @@ LiteLLM                集成                ✅ 完成      (早期)
 | 审批过期清理 | ✅ | 定时任务自动标记 expired |
 
 ## 开发记录
+
+### 2026-08-07（渐进式披露 + 输入缓存设计讨论）
+
+调研 OpenAI / Anthropic / DeepSeek 官方缓存文档，确认渐进式披露与缓存命中的兼容设计（无代码改动）：
+
+- **关键修正**：OpenAI 官方明确 tools 必须 identical 才能命中缓存（此前假设 tools 在顶层不参与缓存是错的）
+- **Anthropic 官方方案**：defer_loading + tool search，发现的工具定义以 tool_reference 块追加到对话历史末尾 → 前缀不动 → 缓存保留
+- **设计确认**：system 固定目录（每工具一行摘要）+ tools 固定核心集 + 单调追加激活 + 自实现 tool_search 工具
+- 完整设计文档：`docs/progressive-disclosure-design.md`
 
 ### 2026-08-07（Agent Plugins 插件适配 + 统一安装入口）
 
@@ -166,6 +175,8 @@ LiteLLM                集成                ✅ 完成      (早期)
 
 | 问题 | 优先级 | 说明 |
 |---|---|---|
+| 渐进式披露实施 | P1 | 设计已确认（docs/progressive-disclosure-design.md）：固定目录 + 单调激活 + tool_search，待实施 |
+| MCP 接入 | P1 | 迭代 B：stdio/streamable-http，注册进 ToolRegistry + 审批；天然需要渐进披露约束 |
 | 权限审批页 | P1 | 后端 API 就绪（approval/permission），前端无独立页面（当前在聊天内联审批） |
 | 会话标题自动生成 | P2 | 当前用消息前 20 字，无自动摘要 |
 | 更多工具 | P2 | web_search、python_execute |
