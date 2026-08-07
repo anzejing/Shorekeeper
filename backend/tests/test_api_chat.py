@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.chat import init_chat_api, router as chat_router
 from app.memory.service import MemoryService
 from app.memory.sqlite_store import SQLiteMemoryStore, SQLiteSessionStore, init_memory_db
+from app.plugin.loader import PluginLoader
 from app.runtime.litellm_client import DONE, TEXT_DELTA, LiteLLMCompletionRequest, LiteLLMStreamEvent
 from app.runtime.models import Allow, Message, Role
 from app.runtime.runtime import NativePythonRuntime
@@ -68,7 +69,8 @@ async def _setup(
     # Skill
     skill_store = SQLiteSkillStore(db)
     skill_loader = SkillLoader(tmp_path / "skills", skill_store)
-    skill_service = SkillService(skill_store, skill_loader)
+    plugin_loader = PluginLoader(tmp_path / "plugins", skill_loader)
+    skill_service = SkillService(skill_store, skill_loader, plugin_loader)
     await skill_service.initialize()
 
     # ToolRegistry

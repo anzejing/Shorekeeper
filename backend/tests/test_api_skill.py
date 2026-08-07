@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.skill import init_skill_api, router as skill_router
 from app.runtime.store import init_db
+from app.plugin.loader import PluginLoader
 from app.skill.loader import SkillLoader
 from app.skill.service import SkillService
 from app.skill.store import SQLiteSkillStore, init_skill_db
@@ -24,7 +25,8 @@ async def _setup(skills_dir: Path) -> tuple[SkillService, FastAPI]:
     await init_skill_db(db)
     store = SQLiteSkillStore(db)
     loader = SkillLoader(skills_dir, store)
-    service = SkillService(store, loader)
+    plugin_loader = PluginLoader(skills_dir.parent / "plugins", loader)
+    service = SkillService(store, loader, plugin_loader)
     await service.initialize()
     init_skill_api(service)
 

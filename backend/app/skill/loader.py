@@ -157,6 +157,12 @@ class SkillLoader:
             log.warning("SKILL.md 缺少必填字段: %s", missing)
             return None
 
+        # version 兼容（Agent Plugins 规范）：metadata.version → 顶层 version → 默认值
+        if "version" not in frontmatter:
+            metadata = frontmatter.get("metadata")
+            if isinstance(metadata, dict) and metadata.get("version"):
+                frontmatter["version"] = metadata["version"]
+
         # 填充可选字段默认值
         for key, default in OPTIONAL_FIELDS.items():
             if key not in frontmatter:

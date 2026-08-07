@@ -42,7 +42,7 @@ class SkillInfo:
     这些内容来自文件系统，不存数据库。
     """
 
-    name: str                    # 唯一标识，来自 frontmatter
+    name: str                    # 唯一标识（插件 skill 为 'plugin-name/skill-name'）
     description: str             # 简短描述，来自 frontmatter
     category: str                # memory | utility | custom
     version: str                 # 版本号
@@ -50,6 +50,7 @@ class SkillInfo:
     system_prompt: str           # SKILL.md body，注入到系统消息
     path: Path                   # SKILL.md 文件路径
     has_scripts: bool = False    # 目录中是否有脚本文件（.sh, .py 等）
+    plugin_name: str | None = None  # 来源插件名（独立 skill 为 None）
 
 
 # ─── 数据库存储的 Skill 状态 ──────────────────────────────
@@ -83,6 +84,7 @@ class SkillResponse(BaseModel):
     system_prompt: str
     path: str                  # 文件路径（字符串）
     has_scripts: bool = False
+    plugin_name: str | None = None  # 来源插件名（独立 skill 为 None）
     config: dict[str, Any] = Field(default_factory=dict)
     installed_at: datetime | None = None
 

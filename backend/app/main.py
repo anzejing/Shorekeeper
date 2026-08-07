@@ -27,6 +27,7 @@ from app.memory.service import MemoryService
 from app.memory.session_store import SessionStore
 from app.memory.sqlite_store import SQLiteMemoryStore, SQLiteSessionStore, init_memory_db
 from app.memory.tools import MEMORY_TOOLS, MemoryToolExecutor
+from app.plugin.loader import PluginLoader
 from app.tools import BUILTIN_TOOLS
 from app.tools.bash import BashExecutor
 from app.tools.file import ReadFileExecutor, WriteFileExecutor
@@ -103,7 +104,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     skill_store = SQLiteSkillStore(db)
     skills_dir = config_service.data_dir / "skills"
     skill_loader = SkillLoader(skills_dir, skill_store)
-    skill_service = SkillService(skill_store, skill_loader)
+    plugins_dir = config_service.data_dir / "plugins"
+    plugin_loader = PluginLoader(plugins_dir, skill_loader)
+    skill_service = SkillService(skill_store, skill_loader, plugin_loader)
     await skill_service.initialize()
     init_skill_api(skill_service)
 
