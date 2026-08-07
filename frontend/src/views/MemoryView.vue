@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useKunMessage, useKunAlert } from '@kungal/ui-vue'
 import { useMemoryStore, MEMORY_CATEGORIES } from '../stores/memory'
 import SessionMessagesDrawer from '../components/SessionMessagesDrawer.vue'
@@ -8,6 +9,7 @@ import type { Session } from '../api/session'
 import type { MemoryEntry } from '../api/memory'
 
 const store = useMemoryStore()
+const router = useRouter()
 
 onMounted(() => {
   store.loadSessions()
@@ -26,6 +28,7 @@ watch(
 const tabs = [
   { value: 'history', textValue: '对话历史' },
   { value: 'memories', textValue: '长期记忆' },
+  { value: 'search', textValue: '搜索' },
 ]
 
 const categoryOptions = [
@@ -104,6 +107,15 @@ async function handleDeleteMemory(m: MemoryEntry) {
 
 function closeMemoryDrawer() {
   store.editingMemory = null
+}
+
+// 点击搜索结果跳转到对应会话
+function handleJumpToSession(sessionId: string) {
+  router.push(`/chat/${sessionId}`)
+}
+
+function handleSearchKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter') store.runSearch()
 }
 </script>
 
@@ -279,6 +291,88 @@ function closeMemoryDrawer() {
       </template>
     </KunTabPanel>
 
+    <!-- ─── 搜索 Tab ─── -->
+    <KunTabPanel
+      v-if="store.activeTab === 'search'"
+      value="search"
+      active="search"
+    >
+      <!-- 搜索框 -->
+      <div class="flex items-center gap-2 mb-4">
+        <KunInput
+          v-model="store.searchQuery"
+          class="flex-1"
+          placeholder="搜索历史对话和长期记忆..."
+          size="sm"
+          @keydown="handleSearchKeydown"
+        >
+          <template #prefix>
+            <KunIcon name="lucide:search" class="search-icon" />
+          </template>
+        </KunInput>
+        <KunButton
+          color="primary"
+          variant="flat"
+          size="sm"
+          :loading="store.searching"
+          :disabled="!store.searchQuery.trim()"
+          @click="store.runSearch()"
+        >
+          搜索
+        </KunButton>
+      </div>
+
+      <!-- 错误 -->
+      <KunInfo
+        v-if="store.searchError"
+        color="error"
+        :description="store.searchError"
+        class="mb-4"
+      />
+
+      <!-- 结果 -->
+      <div v-if="store.searchResults.length" class="flex flex-col gap-2">
+        <div
+          v-for="(r, i) in store.searchResults"
+          :key="i"
+          class="search-item"
+          :class="{ clickable: r.type === 'message' && r.session_id }"
+          @click="r.type === 'message' && r.session_id && handleJumpToSession(r.session_id)"
+        >
+          <div class="flex items-center gap-2 mb-1">
+            <KunChip
+              size="xs"
+              variant="flat"
+              :color="r.type === 'message' ? 'primary' : 'success'"
+            >
+              {{ r.type === 'message' ? '消息' : '记忆' }}
+            </KunChip>
+            <span class="text-xs text-gray-400">
+              {{ formatTime(r.created_at) }} · 相关度 {{ Math.round(r.relevance_score * 100) }}%
+            </span>
+          </div>
+          <p class="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap">
+            {{ r.content }}
+          </p>
+          <div
+            v-if="r.type === 'message' && r.session_id"
+            class="text-xs text-primary mt-1 flex items-center gap-1"
+          >
+            <KunIcon name="lucide:message-square" class="search-icon" />
+            点击查看对话
+          </div>
+        </div>
+      </div>
+
+      <!-- 空状态 -->
+      <div
+        v-else-if="!store.searching && store.searchQuery.trim()"
+        class="py-12"
+      >
+        <KunNull description="没有找到相关内容" />
+      </div>
+    </KunTabPanel>
+
     <!-- 会话消息抽屉 -->
     <SessionMessagesDrawer
       :session="store.viewingSession"
@@ -302,5 +396,26 @@ function closeMemoryDrawer() {
   font-size: 14px;
   color: var(--kun-color-text-secondary, #9ca3af);
   flex-shrink: 0;
+}
+
+.search-item {
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--kun-color-bg-hover, #f3f4f6);
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+
+.search-item.clickable {
+  cursor: pointer;
+}
+
+.search-item.clickable:hover {
+  border-color: var(--kun-color-primary, #3b82f6);
+  background: var(--kun-color-primary-light, #eff6ff);
+}
+
+.text-primary {
+  color: var(--kun-color-primary, #3b82f6);
 }
 </style>

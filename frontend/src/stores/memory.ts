@@ -11,7 +11,9 @@ import {
   fetchMemories,
   updateMemory,
   deleteMemory,
+  searchMemory,
   type MemoryEntry,
+  type SearchResult,
 } from '../api/memory'
 
 // 长期记忆分类（与后端 MemoryCategory 一致）
@@ -137,6 +139,28 @@ export const useMemoryStore = defineStore('memory', () => {
     }
   }
 
+  // ─── 搜索 ───
+  const searchQuery = ref('')
+  const searchResults = ref<SearchResult[]>([])
+  const searching = ref(false)
+  const searchError = ref<string | null>(null)
+
+  /** 执行搜索（消息 + 长期记忆） */
+  async function runSearch() {
+    const q = searchQuery.value.trim()
+    if (!q) return
+    searching.value = true
+    searchError.value = null
+    try {
+      const res = await searchMemory(q, 'all', 20)
+      searchResults.value = res.results
+    } catch (e: any) {
+      searchError.value = e.message
+    } finally {
+      searching.value = false
+    }
+  }
+
   return {
     activeTab,
     sessions,
@@ -159,5 +183,10 @@ export const useMemoryStore = defineStore('memory', () => {
     loadMemories,
     saveMemoryEntry,
     removeMemory,
+    searchQuery,
+    searchResults,
+    searching,
+    searchError,
+    runSearch,
   }
 })
