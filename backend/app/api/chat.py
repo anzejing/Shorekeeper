@@ -24,6 +24,7 @@ from app.runtime.models import (
 )
 from app.memory.service import MemoryService
 from app.skill.service import SkillService
+from app.tool.definitions import PROXY_TOOLS
 from app.tool.registry import ToolRegistry
 
 log = logging.getLogger(__name__)
@@ -96,7 +97,43 @@ class ChatStreamResponse(BaseModel):
     session_id: str
 
 
+# --- 基础系统提示 ---
+
+_BASE_SYSTEM_PROMPT = (
+    "你是一个有用的 AI 助手。你可以使用工具来完成任务。\n\n"
+    "当用户的需求涉及你无法直接完成的操作时，使用可用的工具。\n"
+    "对于核心工具（bash_execute, read_file, write_file, read_memory, "
+    "write_memory, search_memory），直接调用。\n"
+    "对于其他工具，先用 tool_search 搜索，再用 tool_executor 执行。"
+)
+
+
 # --- 通用会话准备逻辑 ---
+
+
+def _build_tool_directory(registry: ToolRegistry) -> str:
+    """构建工具目录（固定文本，注入 system）。
+
+    核心工具列出完整信息，代理工具说明使用方式。
+    """
+    lines = ["## 可用工具\n", "你可以直接使用以下工具（直接调用，无需搜索）：\n"]
+
+    # 核心工具（排除代理工具）
+    proxy_names = {t.name for t in PROXY_TOOLS}
+    core_tools = [
+        td for td in registry.get_all_tools()
+        if td.name not in proxy_names
+    ]
+    for td in core_tools:
+        lines.append(f"- {td.name}: {td.description}")
+
+    lines.append("")
+    lines.append("当你需要执行上述工具之外的操作时：")
+    lines.append("1. 先调用 tool_search(query=\"你需要的功能\") 搜索工具")
+    lines.append("2. 阅读返回的工具定义和参数格式")
+    lines.append("3. 调用 tool_executor(tool_name=\"工具名\", arguments={...}) 执行")
+
+    return "\n".join(lines)
 
 
 async def _prepare_session_and_run(
@@ -132,13 +169,21 @@ async def _prepare_session_and_run(
         session_id, max_messages=_MAX_CONTEXT_MESSAGES
     )
 
-    # 4. 收集 system prompts
-    system_prompts = await skill.get_system_prompts()
+    # 4. 组装固定 system prompt（永远不变）
+    tool_directory = _build_tool_directory(registry)
+    skill_summaries = await skill.get_skill_summaries()
+
+    system_parts = [_BASE_SYSTEM_PROMPT, tool_directory]
+    if skill_summaries:
+        system_parts.append(skill_summaries)
+
+    system_message = Message(
+        role=Role.SYSTEM,
+        content="\n\n".join(system_parts),
+    )
 
     # 5. 组装 messages
-    messages: list[Message] = []
-    for prompt in system_prompts:
-        messages.append(Message(role=Role.SYSTEM, content=prompt))
+    messages: list[Message] = [system_message]
     for msg in context:
         try:
             role = Role(msg.role)
@@ -146,8 +191,10 @@ async def _prepare_session_and_run(
             continue
         messages.append(Message(role=role, content=msg.content))
 
-    # 6. 创建 Run
+    # 6. 固定 tools 列表（永远不变）
     tools = registry.get_all_tools()
+
+    # 7. 创建 Run
     run_request = RunRequest(
         session_id=session_id,
         agent_id="chat",

@@ -74,6 +74,9 @@ class SkillService:
     async def get_system_prompts(self) -> list[str]:
         """收集所有 enabled Skill 的 system_prompt。
 
+        注意：渐进式披露模式下，此方法不再用于 system 组装。
+        请使用 get_skill_summaries() 获取摘要目录。
+
         Returns:
             系统提示词列表（每个 Skill 一个字符串）。
         """
@@ -86,6 +89,27 @@ class SkillService:
                 prompts.append(info.system_prompt)
 
         return prompts
+
+    async def get_skill_summaries(self) -> str:
+        """生成 Skill 摘要目录（固定文本，注入 system）。
+
+        渐进式披露模式下，system 中只放一行摘要。
+        LLM 需要时通过 tool_search 获取完整 prompt。
+
+        Returns:
+            格式化的 Skill 摘要文本。
+        """
+        states = await self._store.list(enabled=True)
+        if not states:
+            return ""
+
+        lines = ["可用技能索引（调用 tool_search 搜索技能获取详细使用方法）："]
+        for state in states:
+            info = self._info_cache.get(state.name)
+            if info:
+                lines.append(f"- {info.name}: {info.description}")
+
+        return "\n".join(lines)
 
     # ─── 查询 ────────────────────────────────────────────
 
