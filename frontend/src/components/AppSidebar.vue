@@ -11,6 +11,8 @@ const chat = useChatStore()
 
 const navItems = [
   { path: '/skills', label: 'Skills', icon: 'lucide:puzzle' },
+  { path: '/mcp', label: 'MCP', icon: 'lucide:plug' },
+  { path: '/approvals', label: '审批', icon: 'lucide:shield-alert' },
   { path: '/memory', label: '记忆', icon: 'lucide:brain' },
   { path: '/config', label: '配置', icon: 'lucide:settings' },
 ]

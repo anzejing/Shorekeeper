@@ -35,6 +35,16 @@ const router = createRouter({
       component: () => import('./views/MemoryView.vue'),
     },
     {
+      path: '/mcp',
+      name: 'mcp',
+      component: () => import('./views/MCPView.vue'),
+    },
+    {
+      path: '/approvals',
+      name: 'approvals',
+      component: () => import('./views/ApprovalView.vue'),
+    },
+    {
       path: '/config',
       name: 'config',
       component: () => import('./views/ConfigView.vue'),
