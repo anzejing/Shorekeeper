@@ -1,6 +1,6 @@
 # Shorekeeper 开发进度
 
-> 最后更新：2026-08-07
+> 最后更新：2026-08-10
 
 ## 架构完成度
 
@@ -10,7 +10,7 @@
 UI (Vue)               聊天界面             ✅ 完成      8660dff
 UI (Vue)               Skills 管理页         ✅ 完成      55f701f
 UI (Vue)               记忆管理页           ✅ 完成      b017a05
-UI (Vue)               权限审批页           ❌ 未开始    -
+UI (Vue)               权限审批页           ✅ 完成      (2026-08-10)
 API                    chat                ✅ 完成      6a8483a
 API                    memory              ✅ 完成      0860fd7
 API                    skill               ✅ 完成      b5776f3
@@ -29,12 +29,15 @@ Business: Workflow      -                   ❌ 预留      -
 ToolRegistry           注册/执行           ✅ 完成      b5776f3
 Tools: Memory          3 个                ✅ 完成      0860fd7
 Tools: 通用            3 个                ✅ 完成      3319442
+Tools: 渐进式披露      tool_search/executor ✅ 完成      (2026-08-10)
+MCP 模块               连接/发现/执行       ✅ 完成      (2026-08-10)
+MCP 管理页面           前端 CRUD            ✅ 完成      (2026-08-10)
 ─────────────────────────────────────────────────────────────
 Runtime Adapter        全部                ✅ 完成      (早期)
 LiteLLM                集成                ✅ 完成      (早期)
 ─────────────────────────────────────────────────────────────
 数据目录               ~/.shorekeeper/     ✅ 完成      64a8174
-测试                   后端 337 个          ✅ 通过      (最新)
+测试                   后端 447 个          ✅ 通过      (最新)
 ```
 
 ## 已验证的端到端流程
@@ -55,8 +58,159 @@ LiteLLM                集成                ✅ 完成      (早期)
 | 会话管理 | ✅ | 新建 / 切换 / 删除（前后端一致） |
 | 会话删除确认 | ✅ | KunUI 确认框（取消/确定） |
 | 审批过期清理 | ✅ | 定时任务自动标记 expired |
+| 渐进式披露：tool_search | ✅ | BM25 搜索 MCP 工具，返回完整 schema |
+| 渐进式披露：tool_executor | ✅ | 代理执行器 + 参数校验 + 错误反馈 |
+| MCP 服务器连接（stdio） | ✅ | 子进程长连接，自动发现工具 |
+| MCP 工具注册 | ✅ | ToolRegistry + ToolIndex 双注册 |
+| MCP 工具执行 | ✅ | tool_executor → MCPService → call_tool |
+| MCP 断开清理 | ✅ | 工具从 registry/index 自动移除 |
+| LLM 两步调用模式 | ✅ | tool_search → tool_executor 全链路验证 |
+| LLM 参数错误自恢复 | ✅ | 缺参数 → 错误反馈 → LLM 自行修正 |
+| LLM 连续多工具 | ✅ | 3 个工具 × 2 步 = 6 步全部成功 |
+| MCP 管理页面：添加服务器 | ✅ | 填写表单 → 连接 → 显示工具数 |
+| MCP 管理页面：重连 | ✅ | 点击重连 → 状态更新 → toast 提示 |
+| MCP 管理页面：删除确认 | ✅ | 确认弹窗 → 确定 → 服务器移除 |
+| MCP 管理页面：MiMo 视觉验证 | ✅ | 布局/卡片/弹窗/按钮样式均正常 |
+| 权限审批页：审批列表 Tab | ✅ | 空状态/待审批/历史记录分组 |
+| 权限审批页：权限规则 Tab | ✅ | 规则列表/标签/策略显示 |
+| 权限审批页：MiMo 视觉验证 | ✅ | 布局/Tab 切换/卡片样式均正常 |
 
 ## 开发记录
+
+### 2026-08-10（MCP 配置持久化）
+
+**功能**：MCP 服务器配置持久化到 config.yaml。
+
+| 修改文件 | 变更 |
+|---|---|
+| `backend/app/api/mcp.py` | 添加/删除服务器后通过 ConfigService 持久化到 config.yaml |
+| `backend/app/main.py` | init_mcp_api 传入 config_service |
+
+**验证**：
+- API 添加服务器 → config.yaml 出现 mcp.servers 配置 ✅
+- API 删除服务器 → config.yaml 中对应配置移除 ✅
+- 重启后自动加载 config.yaml 中的 MCP 配置 ✅
+
+### 2026-08-10（权限审批页）
+
+**功能**：权限审批管理页面（前端 + 后端 API 已就绪）。
+
+| 新增/修改 | 文件 | 说明 |
+|---|---|---|
+| 新增 | `frontend/src/api/approval.ts` | 审批 + 权限规则 API 客户端（含 resumeRun/cancelRun 兼容） |
+| 新增 | `frontend/src/stores/approval.ts` | 审批 + 规则状态管理 |
+| 新增 | `frontend/src/views/ApprovalView.vue` | 权限审批页面 |
+| 修改 | `frontend/src/main.ts` | 添加 /approvals 路由 |
+| 修改 | `frontend/src/components/AppSidebar.vue` | 侧边栏添加审批导航 |
+
+**页面功能**：
+- **审批列表 Tab**：
+  - 待审批列表（橙色边框卡片，显示工具名/参数/时间）
+  - 批准/拒绝按钮
+  - 历史记录（已批准/已拒绝/已过期）
+  - 状态标签（颜色区分）
+- **权限规则 Tab**：
+  - 规则列表（层级标签 + 策略标签 + 工具名）
+  - 添加规则弹窗（工具名/策略/优先级/描述）
+  - 删除规则（确认弹窗）
+  - 重置默认规则
+- 空状态提示
+- 刷新按钮
+
+**MiMo 视觉验证**：
+- 审批列表 Tab：布局整齐，Tab 切换清晰，空状态友好
+- 权限规则 Tab：标签颜色区分明显，按钮位置合理
+- 无 UI 问题
+
+### 2026-08-10（MCP 管理页面）
+
+**功能**：MCP 服务器管理页面（前端 + 后端 API）。
+
+| 新增/修改 | 文件 | 说明 |
+|---|---|---|
+| 新增 | `backend/app/api/mcp.py` | MCP HTTP API（列表/添加/删除/重连） |
+| 修改 | `backend/app/main.py` | 注册 MCP API 路由 |
+| 新增 | `frontend/src/api/mcp.ts` | MCP API 客户端 |
+| 新增 | `frontend/src/stores/mcp.ts` | MCP 状态管理 |
+| 新增 | `frontend/src/views/MCPView.vue` | MCP 管理页面 |
+| 修改 | `frontend/src/main.ts` | 添加 /mcp 路由 |
+| 修改 | `frontend/src/components/AppSidebar.vue` | 侧边栏添加 MCP 导航 |
+| 修改 | `frontend/src/icons.ts` | 添加 plug 图标 |
+
+**页面功能**：
+- 服务器列表（名称、传输类型、连接状态、工具数量）
+- 添加弹窗（支持 stdio / streamable_http 两种传输）
+- 重连按钮（断开后重新连接）
+- 删除按钮（确认弹窗 → 移除服务器及所有工具）
+- 状态标签（已连接/连接中/已断开/错误）
+- 空状态提示
+
+**浏览器测试**：
+- 添加服务器 → 成功连接 → 显示 3 个工具
+- 重连 → 成功 → toast 提示
+- 删除 → 确认弹窗 → 确定 → 服务器移除
+- MiMo 视觉验证：布局/卡片/弹窗/按钮样式均正常
+
+### 2026-08-10（渐进式披露实施 + MCP 接入 + LLM 执行度验证）
+
+**Phase 1: 渐进式披露基础设施**
+
+| 新增文件 | 说明 |
+|---|---|
+| `app/tool/index.py` | ToolIndex + BM25 搜索（中文逐字分词） |
+| `app/tool/schema_validator.py` | JSON Schema 参数校验 + 详细错误反馈 |
+| `app/tool/search.py` | tool_search 执行器 |
+| `app/tool/proxy_executor.py` | tool_executor 代理执行器 |
+| `app/tool/definitions.py` | tool_search / tool_executor 的 ToolDef |
+
+**Phase 2: 系统集成**
+
+| 修改文件 | 变更 |
+|---|---|
+| `app/skill/service.py` | 新增 `get_skill_summaries()` |
+| `app/api/chat.py` | system 组装改为固定结构（基础提示 + 工具目录 + skill 摘要） |
+| `app/main.py` | 注册 tool_search / tool_executor、创建 ToolIndex、添加权限规则 |
+
+**迭代 B: MCP 接入**
+
+| 新增文件 | 说明 |
+|---|---|
+| `app/mcp/__init__.py` | 模块导出 |
+| `app/mcp/models.py` | 配置模型（MCPServerConfig, MCPConfig, MCPServerState） |
+| `app/mcp/client.py` | MCP 客户端封装（connect, discover, call_tool） |
+| `app/mcp/service.py` | MCP 服务（生命周期管理 + 工具注册/路由） |
+
+MCP 支持 stdio（子进程）和 streamable-http（远程 HTTP）两种传输。
+配置方式：`config.yaml` 中添加 `mcp.servers` 即可。
+
+**权限规则**：
+- `tool_search` → ALLOW（只读搜索）
+- `tool_executor` → REQUIRE_APPROVAL（代理执行默认需审批）
+- `system.execute_dynamic` → REQUIRE_APPROVAL（已有规则）
+
+**缓存效果**：tools/system 完全固定，messages append-only。已有消息 100% 缓存命中。
+
+**设计文档**：`docs/progressive-disclosure-design-v2.md`
+
+**LLM 执行度测试（L3）**：
+
+| 测试 | LLM 行为 | 结果 |
+|---|---|---|
+| echo 发现+调用 | tool_search("echo") → tool_executor(text="hello world") | ✅ |
+| add integer 参数 | tool_search("add") → tool_executor(a=123, b=456) → 579 | ✅ |
+| greet enum 参数 | tool_search("greet") → tool_executor(name="Alice", style="casual") | ✅ |
+| 错误自恢复 | tool_executor({}) → 缺参数错误 → tool_executor(name="Test") → 成功 | ✅ |
+| 连续多工具 | echo + add + greet 各自 search → execute，6 步完成 | ✅ |
+
+**修复的 Bug（1 个）**：
+
+| # | 问题 | 修复 |
+|---|---|---|
+| 1 | MCP 连接时先标记 CONNECTED 再注册工具，导致 race condition | 先注册工具再标记 CONNECTED |
+
+**测试新增**：+110 个（ToolIndex 16 + SchemaValidator 26 + ToolSearch 9 + ProxyExecutor 15 + SkillSummaries 4 + MCPService 16 + MCP 集成 18 + LLM 执行度 5 + 其他 1）
+
+**验证**：后端 447 测试全部通过。
 
 ### 2026-08-07（渐进式披露 + 输入缓存设计讨论）
 
@@ -175,9 +329,6 @@ LiteLLM                集成                ✅ 完成      (早期)
 
 | 问题 | 优先级 | 说明 |
 |---|---|---|
-| 渐进式披露实施 | P1 | 设计已确认（docs/progressive-disclosure-design.md）：固定目录 + 单调激活 + tool_search，待实施 |
-| MCP 接入 | P1 | 迭代 B：stdio/streamable-http，注册进 ToolRegistry + 审批；天然需要渐进披露约束 |
-| 权限审批页 | P1 | 后端 API 就绪（approval/permission），前端无独立页面（当前在聊天内联审批） |
 | 会话标题自动生成 | P2 | 当前用消息前 20 字，无自动摘要 |
 | 更多工具 | P2 | web_search、python_execute |
 | skills.sh 在线安装 | P2 | 需接入外部服务 + 后端执行 npx 的接口 |
@@ -186,26 +337,28 @@ LiteLLM                集成                ✅ 完成      (早期)
 
 ## 下一步计划
 
-### 短期（当前迭代）
+### 短期
 
-1. **权限审批页**（可选）
-   - 审批列表 / 历史
-   - 权限规则管理
+1. **会话标题自动生成**
+   - 首轮对话后用 LLM 摘要生成标题
+
+2. **会话标题自动生成**
+   - 首轮对话后用 LLM 摘要生成标题
 
 ### 中期
 
-2. **更多 Tools**
+3. **更多 Tools**
    - web_search
    - python_execute
 
-3. **会话标题自动生成**
+4. **会话标题自动生成**
 
-4. **skills.sh 在线安装**
+5. **skills.sh 在线安装**
 
 ### 长期
 
-5. **Workflow 模块**
-6. **分布式执行（Temporal）**
+6. **Workflow 模块**
+7. **分布式执行（Temporal）**
 
 ## 提交历史
 
