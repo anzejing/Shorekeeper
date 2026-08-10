@@ -71,6 +71,28 @@ class UIConfig(BaseModel):
     )
 
 
+class MCPServerConfig(BaseModel):
+    """单个 MCP 服务器配置"""
+
+    name: str = Field(description="服务器唯一标识")
+    transport: str = Field("stdio", description="传输类型: stdio / streamable_http")
+    enabled: bool = Field(True, description="是否启用")
+    command: str = Field("", description="stdio 启动命令")
+    args: list[str] = Field(default_factory=list, description="命令参数")
+    env: dict[str, str] | None = Field(None, description="环境变量")
+    cwd: str | None = Field(None, description="工作目录")
+    url: str = Field("", description="HTTP 服务地址")
+    headers: dict[str, str] | None = Field(None, description="HTTP 请求头")
+    timeout: float = Field(30.0, description="连接超时（秒）")
+    auto_approve: list[str] = Field(default_factory=list, description="自动批准的工具名列表")
+
+
+class MCPConfig(BaseModel):
+    """MCP 全局配置"""
+
+    servers: list[MCPServerConfig] = Field(default_factory=list, description="MCP 服务器列表")
+
+
 class AppConfig(BaseModel):
     """应用总配置"""
 
@@ -80,3 +102,4 @@ class AppConfig(BaseModel):
     storage: StorageConfig = StorageConfig()
     security: SecurityConfig = SecurityConfig()
     ui: UIConfig = UIConfig()
+    mcp: MCPConfig = MCPConfig()

@@ -17,6 +17,7 @@ from app.api.approval import init_approval_api, router as approval_router
 from app.api.chat import init_chat_api, router as chat_router
 from app.api.config import router as config_router
 from app.api.memory import init_memory_api, router as memory_router
+from app.api.mcp import init_mcp_api, router as mcp_router
 from app.api.permission import init_permission_api, router as permission_router
 from app.api.runtime import router as runtime_router
 from app.api.runtime import set_runtime
@@ -31,6 +32,13 @@ from app.plugin.loader import PluginLoader
 from app.tools import BUILTIN_TOOLS
 from app.tools.bash import BashExecutor
 from app.tools.file import ReadFileExecutor, WriteFileExecutor
+from app.tool.definitions import PROXY_TOOLS, TOOL_SEARCH_DEF, TOOL_EXECUTOR_DEF
+from app.tool.index import ToolIndex, ToolIndexEntry
+from app.tool.proxy_executor import ProxyToolExecutor
+from app.tool.schema_validator import SchemaValidator
+from app.tool.search import ToolSearchExecutor
+from app.mcp.models import MCPConfig as MCPConfigModel, MCPServerConfig as MCPServerConfigModel
+from app.mcp.service import MCPService
 from app.permission.analyzer.bash import BashAnalyzer
 from app.permission.approval import ApprovalManager
 from app.permission.engine import PermissionEngine
@@ -98,6 +106,46 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     tool_registry.register(BUILTIN_TOOLS[0], bash_executor)   # bash_execute
     tool_registry.register(BUILTIN_TOOLS[1], read_file_executor)  # read_file
     tool_registry.register(BUILTIN_TOOLS[2], write_file_executor) # write_file
+
+    # 初始化 ToolIndex（渐进式披露）
+    tool_index = ToolIndex()
+    # 将核心工具注册到索引
+    for td in tool_registry.get_all_tools():
+        tool_index.add(ToolIndexEntry(
+            name=td.name,
+            description=td.description,
+            parameters=td.parameters,
+            category="core",
+            source="builtin",
+            tags=[],
+        ))
+
+    # 注册代理工具（tool_search + tool_executor）
+    search_executor = ToolSearchExecutor(tool_index)
+    proxy_executor = ProxyToolExecutor(tool_registry, SchemaValidator())
+    tool_registry.register(TOOL_SEARCH_DEF, search_executor)
+    tool_registry.register(TOOL_EXECUTOR_DEF, proxy_executor)
+    logger.info("渐进式披露工具注册完成: tool_search, tool_executor")
+
+    # 初始化 MCP 模块
+    mcp_config_data = config_service.config.mcp
+    mcp_config = MCPConfigModel(
+        servers=[
+            MCPServerConfigModel(
+                name=s.name, transport=s.transport, enabled=s.enabled,
+                command=s.command, args=s.args, env=s.env, cwd=s.cwd,
+                url=s.url, headers=s.headers, timeout=s.timeout,
+                auto_approve=s.auto_approve,
+            )
+            for s in mcp_config_data.servers
+        ]
+    )
+    mcp_service = MCPService(mcp_config, tool_registry, tool_index)
+    try:
+        await mcp_service.initialize()
+    except Exception as e:
+        logger.error("MCP 服务初始化失败: %s", e)
+    init_mcp_api(mcp_service, config_service)
 
     # 初始化 Skill 模块
     await init_skill_db(db)
@@ -186,6 +234,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             created_by="system", description="搜索记忆安全",
             created_at=now, updated_at=now,
         ),
+        PermissionRule(
+            rule_id="default-tool-search", layer=PermissionRuleLayer.BUILTIN_DEFAULT,
+            capability=None, tool_name="tool_search", arguments_pattern=None,
+            conditions={}, policy=PermissionResult.ALLOW, priority=0,
+            scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
+            created_by="system", description="工具搜索是只读操作，安全",
+            created_at=now, updated_at=now,
+        ),
+        PermissionRule(
+            rule_id="default-tool-executor", layer=PermissionRuleLayer.BUILTIN_DEFAULT,
+            capability=None, tool_name="tool_executor", arguments_pattern=None,
+            conditions={}, policy=PermissionResult.REQUIRE_APPROVAL, priority=0,
+            scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
+            created_by="system", description="代理执行器默认需要审批",
+            created_at=now, updated_at=now,
+        ),
     ]
     # 插入默认规则（已存在则删除重建，确保规则定义同步）
     for rule in default_rules:
@@ -233,6 +297,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        # 关闭 MCP 服务
+        try:
+            await mcp_service.shutdown()
+        except Exception:
+            logger.exception("MCP 服务关闭异常")
+
         approval_cleanup_task.cancel()
         try:
             await approval_cleanup_task
@@ -271,6 +341,7 @@ app.include_router(config_router, prefix="/api/config", tags=["config"])
 app.include_router(runtime_router, prefix="/api", tags=["runtime"])
 app.include_router(memory_router)
 app.include_router(skill_router)
+app.include_router(mcp_router)
 app.include_router(permission_router)
 app.include_router(approval_router)
 app.include_router(chat_router)
