@@ -77,6 +77,29 @@ LiteLLM                集成                ✅ 完成      (早期)
 
 ## 开发记录
 
+### 2026-08-11（LLM 切换 DeepSeek V4 Flash + 固定 tools 列表修复）
+
+**背景**：mimo API 配额耗尽（429），LLM 切换到 opencode-go 的 deepseek-v4-flash。
+
+| 修改 | 文件 | 说明 |
+|---|---|---|
+| 修改 | `~/.shorekeeper/config.yaml` + `backend/.env` | runtime 切换：base_url=https://opencode.ai/zen/go/v1，model=deepseek-v4-flash |
+| 修改 | `backend/app/api/chat.py` | tools 列表改为注入固定列表（不再用 registry.get_all_tools） |
+| 修改 | `backend/app/main.py` | 组装 fixed_tools（BUILTIN + MEMORY + web_search + PROXY） |
+| 修改 | `backend/tests/test_llm_execution.py` | LLM 配置切换 + MCP 工具排除出 LLM tools |
+| 修改 | `backend/tests/test_api_chat.py` | 适配 init_chat_api 新签名 |
+
+**修复的问题（DeepSeek V4 Flash 兼容性）**：
+
+| 问题 | 说明 |
+|---|---|
+| 工具名含 `/` 被拒 | opencode.go 要求工具名匹配 `^[a-zA-Z0-9_-]+$`，MCP 工具命名 server/tool 含 `/` → 400。修复：MCP 工具不直接暴露给 LLM，通过 tool_search/tool_executor 发现执行（本就符合设计 G1：tools 永远不变） |
+
+**验证**：
+- LLM 执行度测试 5/5 通过（此前 mimo 配额 429 全部失败）
+- 全量 477 测试通过（472 + 5）
+- 真实聊天端到端："帮我搜索 opencode.ai" → LLM 自动生成 tool_call web_search → 权限 ALLOW → Brave 真实搜索 → LLM 中文总结 → 回复持久化 ✅
+
 ### 2026-08-11（web_search 工具 + pytest 挂起修复）
 
 **功能**：web_search 网络搜索工具（参考 pi-search 插件设计）。
