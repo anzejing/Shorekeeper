@@ -97,7 +97,10 @@ class ConfigService:
         """用 SHOREKEEPER_ 前缀的环境变量覆盖配置。
 
         格式：SHOREKEEPER_SECTION_KEY → config.section.key
-        例如：SHOREKEEPER_RUNTIME_API_KEY → runtime.api_key
+        例如：SHOREKEEPER_LOG_LEVEL → log.level
+
+        注意：SHOREKEEPER_RUNTIME_*（旧模型配置）已废弃，
+        模型配置迁移至数据库（models_config 模块），不再支持环境变量覆盖。
         """
         for key, value in os.environ.items():
             if not key.startswith(_ENV_PREFIX):
@@ -106,6 +109,9 @@ class ConfigService:
             if len(parts) != 2:
                 continue
             section, field = parts
+            if section == "runtime":
+                # 旧 runtime 段已废弃，跳过（避免在配置中产生无用 runtime 键）
+                continue
             if section not in raw:
                 raw[section] = {}
             if isinstance(raw[section], dict):

@@ -10,12 +10,11 @@ from pydantic import BaseModel
 # Group metadata: display name and sort order
 GROUP_META: dict[str, tuple[str, int]] = {
     "server": ("服务器", 1),
-    "runtime": ("Runtime", 2),
-    "log": ("日志", 3),
-    "storage": ("存储", 4),
-    "security": ("安全", 5),
-    "ui": ("界面", 6),
-    "search": ("搜索", 7),
+    "log": ("日志", 2),
+    "storage": ("存储", 3),
+    "security": ("安全", 4),
+    "ui": ("界面", 5),
+    "search": ("搜索", 6),
 }
 
 

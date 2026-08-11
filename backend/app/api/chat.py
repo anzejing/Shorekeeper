@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.runtime import get_runtime
+from app.models_config.service import ModelConfigService
 from app.runtime.models import (
     Message,
     Role,
@@ -35,6 +36,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 _memory_service: MemoryService | None = None
 _skill_service: SkillService | None = None
 _fixed_tools: list[ToolDef] | None = None
+_models_service: ModelConfigService | None = None
 
 # 配置
 _MAX_CONTEXT_MESSAGES = 50
@@ -45,16 +47,18 @@ def init_chat_api(
     memory_service: MemoryService,
     skill_service: SkillService,
     fixed_tools: list[ToolDef],
+    models_config_service: ModelConfigService | None = None,
 ) -> None:
     """初始化 Chat API。
 
     fixed_tools: 固定 tools 列表（渐进式披露设计：会话生命周期内
     永远不变，动态工具通过 tool_search/tool_executor 发现和调用）。
     """
-    global _memory_service, _skill_service, _fixed_tools
+    global _memory_service, _skill_service, _fixed_tools, _models_service
     _memory_service = memory_service
     _skill_service = skill_service
     _fixed_tools = list(fixed_tools)
+    _models_service = models_config_service
 
 
 def _get_memory() -> MemoryService:
@@ -75,7 +79,20 @@ def _get_fixed_tools() -> list[ToolDef]:
     return _fixed_tools
 
 
+def _get_models() -> ModelConfigService:
+    if _models_service is None:
+        raise HTTPException(status_code=503, detail="模型配置模块未初始化")
+    return _models_service
+
+
 # --- 请求/响应模型 ---
+
+
+class ModelRef(BaseModel):
+    """模型引用（provider + model）。"""
+
+    provider_id: str
+    model_id: str
 
 
 class ChatRequest(BaseModel):
@@ -83,6 +100,7 @@ class ChatRequest(BaseModel):
 
     message: str
     session_id: str | None = None
+    model: ModelRef | None = None  # 缺省使用全局当前模型
 
 
 class ChatResponse(BaseModel):
@@ -199,13 +217,44 @@ async def _prepare_session_and_run(
     #    动态工具通过 tool_search 发现、tool_executor 执行）
     tools = fixed_tools
 
-    # 7. 创建 Run
+    # 7. 解析模型：请求指定优先，缺省用全局当前模型
+    model_ref = request.model
+    if model_ref is None:
+        current = await _get_models().get_current()
+        if current is None:
+            raise HTTPException(
+                status_code=400,
+                detail="未配置当前模型，请先在「模型」页选择模型",
+            )
+        model_ref = ModelRef(
+            provider_id=current.provider_id, model_id=current.model_id
+        )
+    try:
+        resolved = await _get_models().resolve_model(
+            model_ref.provider_id, model_ref.model_id
+        )
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # 8. 组装 Run 元数据：模型 + LLM 调用参数（随 Run 持久化，
+    #    挂起恢复时保持同一模型，不因全局切换而串模型）
+    run_metadata = {
+        "model": resolved["litellm_name"],
+        "llm_extra": resolved["llm_extra"],
+        "model_ref": {
+            "provider_id": resolved["provider_id"],
+            "model_id": resolved["model_id"],
+        },
+    }
+
+    # 9. 创建 Run
     run_request = RunRequest(
         session_id=session_id,
         agent_id="chat",
         messages=messages,
         tools=tools,
         max_steps=10,
+        metadata=run_metadata,
     )
     handle = await runtime.create_run(run_request)
 

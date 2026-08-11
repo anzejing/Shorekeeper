@@ -42,14 +42,12 @@ class NativeLiteLLMClient:
     ) -> AsyncIterator[LiteLLMStreamEvent]:
         """流式调用 LLM。"""
         # 构造 litellm 参数
-        # 处理 OpenAI 兼容的自定义 endpoint
         extra = dict(request.extra)
         model = request.model
 
-        # 如果有 api_base 且 model 没有 provider 前缀，自动加 openai/
+        # api_base 透传（模型名已含 provider 前缀，由模型配置生成，不再自动猜测）
         api_base = extra.pop("base_url", None) or extra.pop("api_base", None)
-        if api_base and "/" not in model:
-            model = f"openai/{model}"
+        if api_base:
             extra["api_base"] = api_base
 
         # api_key 从 extra 提取

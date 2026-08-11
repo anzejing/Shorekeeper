@@ -200,11 +200,11 @@ class NativePythonRuntime:
             interceptor=self._interceptor,
             publisher=self._publisher,
             checkpoint_store=self._checkpoint_store,
-            model=self._default_model,
+            model=self._resolve_run_model(snapshot),
             cancellation=cancellation,
             usage=snapshot.usage,
             metadata=snapshot.metadata,
-            llm_extra=dict(self._llm_extra),
+            llm_extra=self._resolve_run_llm_extra(snapshot),
         )
 
         task = asyncio.create_task(self._run_agent_loop(ctx, snapshot))
@@ -289,10 +289,10 @@ class NativePythonRuntime:
             interceptor=self._interceptor,
             publisher=self._publisher,
             checkpoint_store=self._checkpoint_store,
-            model=self._default_model,
+            model=self._resolve_run_model(snapshot),
             cancellation=cancellation,
             usage=snapshot.usage,
-            llm_extra=dict(self._llm_extra),
+            llm_extra=self._resolve_run_llm_extra(snapshot),
         )
 
         task = asyncio.create_task(self._run_agent_loop(ctx, snapshot))
@@ -457,6 +457,17 @@ class NativePythonRuntime:
             await asyncio.sleep(1.0)
 
     # ─── 内部辅助 ─────────────────────────────────────────
+
+    def _resolve_run_model(self, snapshot: RunSnapshot) -> str:
+        """解析 Run 使用的模型：优先 Run 创建时持久化的模型。"""
+        return snapshot.metadata.get("model") or self._default_model
+
+    def _resolve_run_llm_extra(self, snapshot: RunSnapshot) -> dict[str, Any]:
+        """解析 Run 的 LLM 调用参数：优先 Run 创建时持久化的 llm_extra。"""
+        run_extra = snapshot.metadata.get("llm_extra")
+        if isinstance(run_extra, dict) and run_extra:
+            return dict(run_extra)
+        return dict(self._llm_extra)
 
     async def _sync_interceptor_context(self, snapshot: RunSnapshot) -> None:
         """同步 PermissionInterceptor 的 run 上下文。

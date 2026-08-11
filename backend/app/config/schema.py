@@ -11,23 +11,6 @@ class ServerConfig(BaseModel):
     workers: int = Field(1, ge=1, description="工作进程数")
 
 
-class RuntimeConfig(BaseModel):
-    """AI Runtime 配置"""
-
-    base_url: str = Field(
-        "",
-        description="API Base URL（OpenAI 兼容格式，留空使用默认）",
-    )
-    api_key: str = Field(
-        "",
-        description="AI Runtime API Key",
-        json_schema_extra={"secret": True},
-    )
-    model: str = Field("gpt-4", description="默认模型")
-    temperature: float = Field(0.7, ge=0, le=2, description="温度参数")
-    max_tokens: int = Field(4096, ge=1, description="最大 Token 数")
-
-
 class LogConfig(BaseModel):
     """日志配置"""
 
@@ -125,10 +108,9 @@ class SearchConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
-    """应用总配置"""
+    """应用总配置（模型相关配置已迁移至数据库，见 models_config 模块）"""
 
     server: ServerConfig = ServerConfig()
-    runtime: RuntimeConfig = RuntimeConfig()
     log: LogConfig = LogConfig()
     storage: StorageConfig = StorageConfig()
     security: SecurityConfig = SecurityConfig()

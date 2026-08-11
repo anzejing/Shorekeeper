@@ -30,7 +30,6 @@ class TestAppConfig:
         config = AppConfig()
         assert config.server.host == "0.0.0.0"
         assert config.server.port == 8000
-        assert config.runtime.model == "gpt-4"
         assert config.log.level == "INFO"
         assert config.ui.theme == "system"
 
@@ -38,9 +37,9 @@ class TestAppConfig:
         with pytest.raises(ValidationError):
             AppConfig.model_validate({"server": {"port": 99999}})
 
-    def test_validation_temperature_range(self):
+    def test_validation_search_max_results_range(self):
         with pytest.raises(ValidationError):
-            AppConfig.model_validate({"runtime": {"temperature": -1}})
+            AppConfig.model_validate({"search": {"max_results": 99}})
 
 
 class TestConfigService:
@@ -52,7 +51,7 @@ class TestConfigService:
     def test_get(self, tmp_path: Path):
         svc = ConfigService.get_instance(data_dir=tmp_path)
         assert svc.get("server.port") == 8000
-        assert svc.get("runtime.model") == "gpt-4"
+        assert svc.get("search.max_results") == 10
 
     def test_get_invalid_key(self, tmp_path: Path):
         svc = ConfigService.get_instance(data_dir=tmp_path)
@@ -107,16 +106,8 @@ class TestBuildConfigItems:
         items = build_config_items(svc.config)
         group_names = [g["group"] for g in items]
         assert "服务器" in group_names
-        assert "Runtime" in group_names
         assert "日志" in group_names
-
-    def test_secret_masked(self, tmp_path: Path):
-        svc = ConfigService.get_instance(data_dir=tmp_path)
-        items = build_config_items(svc.config)
-        runtime_group = next(g for g in items if g["group"] == "Runtime")
-        api_key_item = next(i for i in runtime_group["items"] if i["key"] == "runtime.api_key")
-        assert api_key_item["value"] == ""
-        assert api_key_item["secret"] is True
+        assert "Runtime" not in group_names  # 模型配置已迁移至数据库
 
     def test_select_type_has_options(self, tmp_path: Path):
         svc = ConfigService.get_instance(data_dir=tmp_path)

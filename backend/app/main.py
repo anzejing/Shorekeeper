@@ -18,6 +18,7 @@ from app.api.chat import init_chat_api, router as chat_router
 from app.api.config import router as config_router
 from app.api.memory import init_memory_api, router as memory_router
 from app.api.mcp import init_mcp_api, router as mcp_router
+from app.api.models import init_models_api, router as models_router
 from app.api.permission import init_permission_api, router as permission_router
 from app.api.runtime import router as runtime_router
 from app.api.runtime import set_runtime
@@ -40,6 +41,8 @@ from app.tool.schema_validator import SchemaValidator
 from app.tool.search import ToolSearchExecutor
 from app.mcp.models import MCPConfig as MCPConfigModel, MCPServerConfig as MCPServerConfigModel
 from app.mcp.service import MCPService
+from app.models_config.service import ModelConfigService
+from app.models_config.store import ModelConfigStore, init_models_config_db
 from app.permission.analyzer.bash import BashAnalyzer
 from app.permission.approval import ApprovalManager
 from app.permission.engine import PermissionEngine
@@ -70,7 +73,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """应用生命周期：启动时初始化 Runtime。"""
     # 初始化配置
     config_service = ConfigService.get_instance()
-    runtime_config = config_service.config.runtime
 
     # 初始化数据库（路径相对于数据目录）
     db_path = config_service.config.storage.database_url
@@ -87,6 +89,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     run_store = SQLiteRunStore(db)
     event_store = SQLiteEventStore(db)
     checkpoint_store = SQLiteCheckpointStore(db)
+
+    # 初始化模型配置模块（多 Provider/Model 管理）
+    await init_models_config_db(db)
+    models_config_store = ModelConfigStore(db)
+    models_config_service = ModelConfigService(
+        models_config_store, config_service.data_dir
+    )
+    init_models_api(models_config_service)
 
     # 初始化 Memory 模块
     await init_memory_db(db)
@@ -277,17 +287,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 初始化 Chat API（固定 tools 列表：渐进式披露设计 G1，
     # 动态工具（MCP/skill）通过 tool_search/tool_executor 发现和执行）
     fixed_tools = [*BUILTIN_TOOLS, *MEMORY_TOOLS, WEB_SEARCH_TOOL, *PROXY_TOOLS]
-    init_chat_api(memory_service, skill_service, fixed_tools)
+    init_chat_api(memory_service, skill_service, fixed_tools, models_config_service)
 
     # 初始化 LLM 客户端
     llm = NativeLiteLLMClient()
 
-    # LLM 配置
+    # 从全局当前模型读取默认 LLM 配置（无配置时为空，运行时由请求携带）
+    current_model = await models_config_service.get_current()
+    default_model = current_model.litellm_name if current_model else ""
     llm_extra = {}
-    if runtime_config.base_url:
-        llm_extra["base_url"] = runtime_config.base_url
-    if runtime_config.api_key:
-        llm_extra["api_key"] = runtime_config.api_key
+    if current_model:
+        provider = await models_config_store.get_provider(current_model.provider_id)
+        if provider:
+            if provider.api_key:
+                llm_extra["api_key"] = provider.api_key
+            if provider.base_url:
+                llm_extra["base_url"] = provider.base_url
 
     # 创建 Runtime（使用 PermissionInterceptor 替换 NoopInterceptorChain）
     runtime = NativePythonRuntime(
@@ -298,7 +313,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         run_store=run_store,
         checkpoint_store=checkpoint_store,
         event_store=event_store,
-        default_model=runtime_config.model,
+        default_model=default_model,
         default_max_steps=20,
         llm_extra=llm_extra,
     )
@@ -353,6 +368,7 @@ app.add_middleware(
 )
 
 app.include_router(config_router, prefix="/api/config", tags=["config"])
+app.include_router(models_router)
 app.include_router(runtime_router, prefix="/api", tags=["runtime"])
 app.include_router(memory_router)
 app.include_router(skill_router)

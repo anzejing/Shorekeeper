@@ -61,9 +61,10 @@ def venv_python() -> str:
 
 @pytest.fixture
 def llm_config() -> dict:
-    """LLM 配置（opencode-go DeepSeek V4 Flash）。"""
+    """LLM 配置（opencode-go DeepSeek V4 Flash，openai_like 前缀）。"""
     return {
-        "model": "deepseek-v4-flash",
+        # 模型名需含 provider 前缀（兼容端点用 openai/ 前缀 + api_base）
+        "model": "openai/deepseek-v4-flash",
         "base_url": "https://opencode.ai/zen/go/v1",
         "api_key": "sk-FyvyyLijOk4MH5EEMT6TAPC2UhEJ4OyuDrhOyHscPGpcTjDhGKN4jpRdJNdUzpLP",
     }
