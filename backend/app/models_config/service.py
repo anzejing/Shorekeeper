@@ -79,6 +79,13 @@ class ModelConfigService:
             raise ValueError(f"provider 已存在: {provider_id}")
 
         base_url = (data.get("base_url") or "").strip()
+        # 目录导入：base_url 为空时从目录 api 字段预填
+        if not base_url and data.get("source") == "catalog":
+            catalog = load_catalog_file(self._data_dir)
+            if catalog:
+                info = get_catalog_provider(catalog, provider_id)
+                if info and info.get("api"):
+                    base_url = info["api"]
         if kind == "openai_like" and not base_url:
             raise ValueError("openai_like 类型必须填写 base_url")
 
