@@ -77,6 +77,39 @@ LiteLLM                集成                ✅ 完成      (早期)
 
 ## 开发记录
 
+### 2026-08-11（web_search 工具 + pytest 挂起修复）
+
+**功能**：web_search 网络搜索工具（参考 pi-search 插件设计）。
+
+| 新增/修改 | 文件 | 说明 |
+|---|---|---|
+| 新增 | `backend/app/tools/web_search.py` | ToolDef + 执行器 + 4 服务商适配（Brave/Tavily/Firecrawl/Jina）+ 配置解析 |
+| 修改 | `backend/app/config/schema.py` | 新增 `SearchConfig`（4 个 secret key + priority + max_results + timeout） |
+| 修改 | `backend/app/config/meta.py` | GROUP_META 增加 search（"搜索"），ConfigView 自动展示 |
+| 修改 | `backend/app/main.py` | 注册 web_search + 默认权限规则（ALLOW，只读） |
+| 修改 | `backend/pyproject.toml` | 显式声明 aiohttp 依赖 |
+| 新增 | `backend/tests/test_web_search.py` | 25 个单元测试（mock HTTP） |
+| 新增 | `backend/tests/conftest.py` | 修复 pytest 结束后进程挂起 |
+
+**工具设计**：
+- action=search（网页搜索）/ extract（网页正文）/ help（使用指南）
+- 按配置优先级自动选择服务商，指定服务商失败自动回退，全部失败返回明确错误
+- API Key 解析优先级：config.yaml → 环境变量 → pi-search 配置兜底（4 个 key 已迁移至 ~/.shorekeeper/config.yaml）
+- 结果摘要 300 字符 / 正文 6000 字符截断
+- 权限：只读 → 默认 ALLOW（与 read_file 一致）
+
+**验证**：
+- 后端 472 测试全部通过（447 原有 + 25 新增），进程正常退出
+- 真实 API 端到端：Brave 搜索返回真实结果 ✅，Jina 提取网页正文 ✅
+
+**修复的测试基建问题（预先存在）**：
+
+| 问题 | 修复 |
+|---|---|
+| pytest 全部测试通过后进程永久挂起：aiosqlite 连接未关闭，非守护 worker 线程导致 threading._shutdown 等待 | conftest.py 追踪并统一关闭连接 |
+
+**备注**：test_llm_execution 5 个失败为 mimo API 配额耗尽（429 quota exhausted），预先存在，与本次改动无关。
+
 ### 2026-08-10（MCP 配置持久化）
 
 **功能**：MCP 服务器配置持久化到 config.yaml。
