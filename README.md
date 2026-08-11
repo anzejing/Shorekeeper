@@ -75,12 +75,15 @@ pnpm install                     # 或 npm install
 
 ```yaml
 runtime:
-  base_url: https://token-plan-cn.xiaomimimo.com/v1   # OpenAI 兼容端点
-  api_key: your-api-key
-  model: mimo-v2.5
+  base_url: https://opencode.ai/zen/go/v1   # OpenAI 兼容端点
+  api_key: sk-xxx
+  model: deepseek-v4-flash
   temperature: 0.7
   max_tokens: 4096
 ```
+
+> ⚠️ 注意：`backend/.env` 中的 `SHOREKEEPER_RUNTIME_*` 环境变量**优先级高于** config.yaml，
+> 修改模型时需要两处保持一致（详见 [docs/model-config.md](docs/model-config.md)）。
 
 ### 4. 启动
 
@@ -141,6 +144,7 @@ pytest tests/ -q        # 290 个测试
 | [docs/ai-development.md](docs/ai-development.md) | AI 开发流程规范 |
 | [docs/engineering-principles.md](docs/engineering-principles.md) | 设计哲学 |
 | [docs/image-recognition.md](docs/image-recognition.md) | 模型无法识图时如何调用 pi + MiMo 识图 |
+| [docs/model-config.md](docs/model-config.md) | 模型配置（来源、优先级、切换方法） |
 
 ## 🧰 内置工具
 
