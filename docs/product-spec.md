@@ -14,7 +14,8 @@
 | 2 | 对话系统 | ✅ 已实现（流式/审批/多轮） | P0 |
 | 3 | Skill 管理 | ❌ 未实现（后端 API 就绪） | P1 |
 | 4 | Memory 管理 | ❌ 未实现（后端 API 就绪） | P1 |
-| 5 | 配置管理 | ✅ 已实现 | P0 |
+| 5 | 配置管理 | ✅ 已实现（Runtime 段已废弃，见 5.6） | P0 |
+| 5.6 | 模型管理 | 🚧 开发中（多 Provider/Model、models.dev 目录、全局切换） | P0 |
 | 6 | 会话管理 | ✅ 已实现 | P0 |
 | 7 | 工具调用 | ✅ 已实现（卡片 + 审批确认） | P1 |
 
@@ -588,7 +589,7 @@ interface ConfigItem {
 | 分组 | 说明 | 示例配置项 |
 |------|------|------------|
 | 服务器 | 服务器相关配置 | 端口、主机、工作目录 |
-| Runtime | AI Runtime配置 | API Key、模型、温度参数 |
+| ~~Runtime~~ | ~~AI Runtime配置（已废弃，见 5.6 模型管理）~~ | ~~API Key、模型、温度参数~~ |
 | 日志 | 日志配置 | 日志级别、日志路径、日志轮转 |
 | 存储 | 存储配置 | 数据库路径、备份策略 |
 | 安全 | 安全配置 | 会话超时、权限策略 |
@@ -685,6 +686,54 @@ interface ConfigItem {
 **影响模块**：
 - 配置类（重载逻辑）
 - 所有模块（配置监听）
+
+---
+
+### 5.6 模型管理（多 Provider / 多 Model）
+
+> 详细设计见 [`docs/models-management.md`](models-management.md)。本小节为产品行为规格。
+
+**描述**：替代旧 Runtime 单模型配置。用户可在独立「模型」页面（`/models`）配置多个 Provider 与多个模型，
+聊天页支持全局模型切换与对话中热切换。
+
+**行为**：
+- Provider 类型：`openai`（官方）/ `openai_like`（兼容端点，需 base_url）/ `anthropic` / `gemini`
+- Provider 与 api_key 存入 SQLite（响应/日志掩码）
+- 每个 provider 下挂多模型；模型元数据（能力/上下文/定价）同步自 models.dev 目录
+- 有 `/models` 端点的 provider 可手动同步，以真实模型列表覆盖 models.dev 不一致数据
+- models.dev 目录：显示数据日期（last_updated 最大值）+ 手动同步按钮（ETag 304 增量判断）
+- 全局当前模型可空可删除；为空时聊天发送提示「请先选择模型」
+- 测试连接：Provider 表单与模型选择器均可选择/输入模型后点击测试
+- 聊天页输入框左上方二级选择器（provider → model）切换当前模型
+- 对话多轮后切换模型可继续对话（每轮 Run 从 memory 恢复完整上下文）
+- Run 挂起（审批）期间切换模型，resume 仍使用该 Run 创建时的模型（model 持久化于 RunSnapshot.metadata）
+- 模型元数据保留 cost 单价 + Run 记录 model_id/usage，为后续计量页面准备数据基础
+
+**数据流**：
+
+```
+用户 → 模型页 → /api/models/* → ModelConfigService → SQLite
+用户切换模型 → PUT /api/models/current
+发送消息 → POST /api/chat/stream {model} → RunRequest.metadata
+  → RunSnapshot.metadata 持久化 → run_loop → litellm（前缀含 provider）
+```
+
+**验收标准**：
+- [ ] 模型页可增删改 4 种类型 provider，api_key 掩码显示
+- [ ] provider 下可增删模型，元数据正确展示
+- [ ] models.dev 目录同步成功，数据日期正确显示，ETag 未变返回 unchanged
+- [ ] /models 端点同步成功，模型列表与 provider 实际一致
+- [ ] 聊天页二级选择器切换全局模型，发送使用新模型
+- [ ] 当前模型为空时发送聊天有明确提示
+- [ ] 测试连接可用（选择/输入模型 → 测试 → 成功/失败反馈）
+- [ ] 热切换：对话中途换模型继续对话上下文不丢；挂起恢复不串模型
+
+**影响模块**：
+- UI 层（ModelsView、模型选择器）
+- API 层（models API、chat API）
+- ModelConfig 模块（新增）
+- Runtime Adapter（per-run model 持久化）
+- Config 模块（移除 Runtime 段）
 
 ---
 

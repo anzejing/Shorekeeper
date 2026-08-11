@@ -71,19 +71,12 @@ pnpm install                     # 或 npm install
 
 ### 3. 配置
 
-首次启动会在 `~/.shorekeeper/` 生成配置文件 `config.yaml`，编辑其中的 LLM 配置：
+模型配置在 Web 界面完成：打开「模型」页（`/models`）添加 Provider（openai / openai_like / anthropic / gemini）
+并选择模型；api_key 等配置存入数据库。首次启动后若无任何 Provider，请在「模型」页配置。
 
-```yaml
-runtime:
-  base_url: https://opencode.ai/zen/go/v1   # OpenAI 兼容端点
-  api_key: sk-xxx
-  model: deepseek-v4-flash
-  temperature: 0.7
-  max_tokens: 4096
-```
+其他系统配置仍由 `~/.shorekeeper/config.yaml` 管理（可在「配置」页修改）。
 
-> ⚠️ 注意：`backend/.env` 中的 `SHOREKEEPER_RUNTIME_*` 环境变量**优先级高于** config.yaml，
-> 修改模型时需要两处保持一致（详见 [docs/model-config.md](docs/model-config.md)）。
+> 模型管理详细设计见 [docs/models-management.md](docs/models-management.md)。
 
 ### 4. 启动
 
@@ -144,7 +137,8 @@ pytest tests/ -q        # 290 个测试
 | [docs/ai-development.md](docs/ai-development.md) | AI 开发流程规范 |
 | [docs/engineering-principles.md](docs/engineering-principles.md) | 设计哲学 |
 | [docs/image-recognition.md](docs/image-recognition.md) | 模型无法识图时如何调用 pi + MiMo 识图 |
-| [docs/model-config.md](docs/model-config.md) | 模型配置（来源、优先级、切换方法） |
+| [docs/model-config.md](docs/model-config.md) | 模型配置（⚠️ 已废弃，历史参考） |
+| [docs/models-management.md](docs/models-management.md) | 模型管理（多 Provider/Model、目录同步、热切换） |
 
 ## 🧰 内置工具
 

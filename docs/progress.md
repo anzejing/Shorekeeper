@@ -1,6 +1,11 @@
 # Shorekeeper 开发进度
 
-> 最后更新：2026-08-10
+> 最后更新：2026-08-11
+
+## 进行中的工作
+
+- **模型管理（多 Provider / 多 Model）**：设计文档 `docs/models-management.md` 已定稿（用户已确认），
+  实现进行中。完成后替换旧 runtime 单模型机制。
 
 ## 架构完成度
 
@@ -76,6 +81,27 @@ LiteLLM                集成                ✅ 完成      (早期)
 | 权限审批页：MiMo 视觉验证 | ✅ | 布局/Tab 切换/卡片样式均正常 |
 
 ## 开发记录
+
+### 2026-08-11（模型管理：文档与设计定稿）
+
+**背景**：旧机制只有单模型（config.yaml runtime 段 + .env 覆盖），改模型需改文件 + 重启。
+用户需求：多 Provider/多 Model、models.dev 目录、/models 端点覆盖、全局切换 + 热切换、配置存 DB。
+
+| 修改 | 文件 | 说明 |
+|---|---|---|
+| 新增 | `docs/models-management.md` | 模型管理完整设计（数据模型/API/数据流/热切换/计量准备） |
+| 修改 | `docs/product-spec.md` | 配置管理功能域：Runtime 段废弃，新增 5.6 模型管理 |
+| 修改 | `docs/model-config.md` | 标注废弃，指向 models-management.md |
+| 修改 | `README.md` | 配置示例更新（见下） |
+
+**关键决策（用户确认）**：
+- 侧边栏新增「模型」页（`/models`），与「配置」并列
+- 4 种 provider：openai / openai_like / anthropic / gemini
+- api_key 等存 SQLite；旧 runtime 段直接删除，.env 覆盖逻辑移除
+- 全局当前模型可空可删；为空时聊天提示选择模型
+- 模型选择器：输入框左上方二级选择（provider → model），支持测试连接
+- models.dev 同步：数据日期显示 + ETag 增量 + 手动同步按钮
+- /models 端点同步覆盖 models.dev 不一致数据；元数据为计量页面保留
 
 ### 2026-08-11（LLM 切换 DeepSeek V4 Flash + 固定 tools 列表修复）
 

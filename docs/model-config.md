@@ -1,6 +1,12 @@
 # 模型配置（Model Configuration）
 
-> 本文档说明 Shorekeeper 的 LLM 模型配置机制：配置来源、优先级、加载链路与切换方法。
+> ⚠️ **已废弃（历史文档）**：本机制（单模型 + config.yaml runtime 段 + .env 覆盖）已被
+> [模型管理（models-management.md）](models-management.md) 取代：多 Provider + 多 Model、配置存 SQLite、
+> 前端模型页管理、全局切换与热切换。本文档仅保留作历史参考，**不再描述当前行为**。
+
+---
+
+> （以下为历史内容）本文档说明 Shorekeeper 的 LLM 模型配置机制：配置来源、优先级、加载链路与切换方法。
 
 ## 1. 配置来源（三层优先级）
 
