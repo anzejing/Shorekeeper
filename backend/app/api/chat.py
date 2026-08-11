@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # 依赖由 main.py 注入
 _memory_service: MemoryService | None = None
 _skill_service: SkillService | None = None
-_tool_registry: ToolRegistry | None = None
+_fixed_tools: list[ToolDef] | None = None
 
 # 配置
 _MAX_CONTEXT_MESSAGES = 50
@@ -44,13 +44,17 @@ _RUN_TIMEOUT = 120.0
 def init_chat_api(
     memory_service: MemoryService,
     skill_service: SkillService,
-    tool_registry: ToolRegistry,
+    fixed_tools: list[ToolDef],
 ) -> None:
-    """初始化 Chat API。"""
-    global _memory_service, _skill_service, _tool_registry
+    """初始化 Chat API。
+
+    fixed_tools: 固定 tools 列表（渐进式披露设计：会话生命周期内
+    永远不变，动态工具通过 tool_search/tool_executor 发现和调用）。
+    """
+    global _memory_service, _skill_service, _fixed_tools
     _memory_service = memory_service
     _skill_service = skill_service
-    _tool_registry = tool_registry
+    _fixed_tools = list(fixed_tools)
 
 
 def _get_memory() -> MemoryService:
@@ -65,10 +69,10 @@ def _get_skill() -> SkillService:
     return _skill_service
 
 
-def _get_registry() -> ToolRegistry:
-    if _tool_registry is None:
-        raise HTTPException(status_code=503, detail="ToolRegistry 未初始化")
-    return _tool_registry
+def _get_fixed_tools() -> list[ToolDef]:
+    if _fixed_tools is None:
+        raise HTTPException(status_code=503, detail="Chat API 未初始化")
+    return _fixed_tools
 
 
 # --- 请求/响应模型 ---
@@ -111,7 +115,7 @@ _BASE_SYSTEM_PROMPT = (
 # --- 通用会话准备逻辑 ---
 
 
-def _build_tool_directory(registry: ToolRegistry) -> str:
+def _build_tool_directory(tools: list[ToolDef]) -> str:
     """构建工具目录（固定文本，注入 system）。
 
     核心工具列出完整信息，代理工具说明使用方式。
@@ -121,7 +125,7 @@ def _build_tool_directory(registry: ToolRegistry) -> str:
     # 核心工具（排除代理工具）
     proxy_names = {t.name for t in PROXY_TOOLS}
     core_tools = [
-        td for td in registry.get_all_tools()
+        td for td in tools
         if td.name not in proxy_names
     ]
     for td in core_tools:
@@ -146,7 +150,6 @@ async def _prepare_session_and_run(
     memory = _get_memory()
     skill = _get_skill()
     runtime = get_runtime()
-    registry = _get_registry()
 
     # 1. 获取或创建 session
     session_id = request.session_id
@@ -170,7 +173,8 @@ async def _prepare_session_and_run(
     )
 
     # 4. 组装固定 system prompt（永远不变）
-    tool_directory = _build_tool_directory(registry)
+    fixed_tools = _get_fixed_tools()
+    tool_directory = _build_tool_directory(fixed_tools)
     skill_summaries = await skill.get_skill_summaries()
 
     system_parts = [_BASE_SYSTEM_PROMPT, tool_directory]
@@ -191,8 +195,9 @@ async def _prepare_session_and_run(
             continue
         messages.append(Message(role=role, content=msg.content))
 
-    # 6. 固定 tools 列表（永远不变）
-    tools = registry.get_all_tools()
+    # 6. 固定 tools 列表（渐进式披露设计：永远不变，
+    #    动态工具通过 tool_search 发现、tool_executor 执行）
+    tools = fixed_tools
 
     # 7. 创建 Run
     run_request = RunRequest(

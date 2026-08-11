@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.chat import init_chat_api, router as chat_router
 from app.memory.service import MemoryService
 from app.memory.sqlite_store import SQLiteMemoryStore, SQLiteSessionStore, init_memory_db
+from app.memory.tools import MEMORY_TOOLS
 from app.plugin.loader import PluginLoader
 from app.runtime.litellm_client import DONE, TEXT_DELTA, LiteLLMCompletionRequest, LiteLLMStreamEvent
 from app.runtime.models import Allow, Message, Role
@@ -21,7 +22,9 @@ from app.runtime.store import SQLiteCheckpointStore, SQLiteEventStore, SQLiteRun
 from app.skill.loader import SkillLoader
 from app.skill.service import SkillService
 from app.skill.store import SQLiteSkillStore, init_skill_db
+from app.tool.definitions import PROXY_TOOLS
 from app.tool.registry import ToolRegistry
+from app.tools import BUILTIN_TOOLS
 
 
 # ─── Mock ─────────────────────────────────────────────────
@@ -95,7 +98,8 @@ async def _setup(
     # 注册 API
     from app.api.runtime import set_runtime
     set_runtime(runtime)
-    init_chat_api(memory_service, skill_service, tool_registry)
+    fixed_tools = [*BUILTIN_TOOLS, *MEMORY_TOOLS, *PROXY_TOOLS]
+    init_chat_api(memory_service, skill_service, fixed_tools)
 
     test_app = FastAPI()
     test_app.include_router(chat_router)

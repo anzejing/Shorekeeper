@@ -274,8 +274,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_permission_api(permission_store, default_rules)
     init_approval_api(approval_manager)
 
-    # 初始化 Chat API
-    init_chat_api(memory_service, skill_service, tool_registry)
+    # 初始化 Chat API（固定 tools 列表：渐进式披露设计 G1，
+    # 动态工具（MCP/skill）通过 tool_search/tool_executor 发现和执行）
+    fixed_tools = [*BUILTIN_TOOLS, *MEMORY_TOOLS, WEB_SEARCH_TOOL, *PROXY_TOOLS]
+    init_chat_api(memory_service, skill_service, fixed_tools)
 
     # 初始化 LLM 客户端
     llm = NativeLiteLLMClient()

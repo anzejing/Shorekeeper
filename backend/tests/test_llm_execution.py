@@ -61,11 +61,11 @@ def venv_python() -> str:
 
 @pytest.fixture
 def llm_config() -> dict:
-    """LLM 配置。"""
+    """LLM 配置（opencode-go DeepSeek V4 Flash）。"""
     return {
-        "model": "mimo-v2.5-pro",
-        "base_url": "https://token-plan-cn.xiaomimimo.com/v1",
-        "api_key": "tp-ch7jt2fj4e879sqtcer2whre8lsab5h1jjxvu9his7n6nvjc",
+        "model": "deepseek-v4-flash",
+        "base_url": "https://opencode.ai/zen/go/v1",
+        "api_key": "sk-FyvyyLijOk4MH5EEMT6TAPC2UhEJ4OyuDrhOyHscPGpcTjDhGKN4jpRdJNdUzpLP",
     }
 
 
@@ -125,7 +125,9 @@ async def test_env(venv_python: str):
 
 def _build_system_prompt(registry: ToolRegistry, srv_name: str) -> str:
     """构建固定 system prompt。"""
-    tool_dir = _build_tool_directory(registry)
+    # 固定工具列表（排除 MCP 动态工具，与 chat.py 渐进式披露设计一致）
+    fixed_tools = [td for td in registry.get_all_tools() if "/" not in td.name]
+    tool_dir = _build_tool_directory(fixed_tools)
     skill_summary = (
         "可用技能索引（调用 tool_search 搜索技能获取详细使用方法）：\n"
         f"- echo-test: 使用 {srv_name}/echo 工具回显文本\n"
@@ -202,6 +204,7 @@ async def _run_agent_loop(
             },
         }
         for td in registry.get_all_tools()
+        if "/" not in td.name  # MCP 工具不直接暴露给 LLM（渐进式披露）
     ]
 
     messages = [
