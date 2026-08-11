@@ -15,6 +15,7 @@ GROUP_META: dict[str, tuple[str, int]] = {
     "storage": ("存储", 4),
     "security": ("安全", 5),
     "ui": ("界面", 6),
+    "search": ("搜索", 7),
 }
 
 

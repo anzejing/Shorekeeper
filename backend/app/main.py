@@ -32,6 +32,7 @@ from app.plugin.loader import PluginLoader
 from app.tools import BUILTIN_TOOLS
 from app.tools.bash import BashExecutor
 from app.tools.file import ReadFileExecutor, WriteFileExecutor
+from app.tools.web_search import WEB_SEARCH_TOOL, WebSearchExecutor
 from app.tool.definitions import PROXY_TOOLS, TOOL_SEARCH_DEF, TOOL_EXECUTOR_DEF
 from app.tool.index import ToolIndex, ToolIndexEntry
 from app.tool.proxy_executor import ProxyToolExecutor
@@ -106,6 +107,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     tool_registry.register(BUILTIN_TOOLS[0], bash_executor)   # bash_execute
     tool_registry.register(BUILTIN_TOOLS[1], read_file_executor)  # read_file
     tool_registry.register(BUILTIN_TOOLS[2], write_file_executor) # write_file
+
+    # 注册网络搜索工具（只读，默认 ALLOW）
+    web_search_executor = WebSearchExecutor(config_service)
+    tool_registry.register(WEB_SEARCH_TOOL, web_search_executor)
 
     # 初始化 ToolIndex（渐进式披露）
     tool_index = ToolIndex()
@@ -248,6 +253,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             conditions={}, policy=PermissionResult.REQUIRE_APPROVAL, priority=0,
             scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
             created_by="system", description="代理执行器默认需要审批",
+            created_at=now, updated_at=now,
+        ),
+        PermissionRule(
+            rule_id="default-web-search", layer=PermissionRuleLayer.BUILTIN_DEFAULT,
+            capability=None, tool_name="web_search", arguments_pattern=None,
+            conditions={}, policy=PermissionResult.ALLOW, priority=0,
+            scope_type=PermissionScope.GLOBAL, scope_id=None, expires_at=None,
+            created_by="system", description="网络搜索是只读操作，安全",
             created_at=now, updated_at=now,
         ),
     ]

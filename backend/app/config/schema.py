@@ -93,6 +93,37 @@ class MCPConfig(BaseModel):
     servers: list[MCPServerConfig] = Field(default_factory=list, description="MCP 服务器列表")
 
 
+class SearchConfig(BaseModel):
+    """网络搜索（web_search 工具）配置"""
+
+    brave_api_key: str = Field(
+        "",
+        description="Brave Search API Key",
+        json_schema_extra={"secret": True},
+    )
+    tavily_api_key: str = Field(
+        "",
+        description="Tavily API Key",
+        json_schema_extra={"secret": True},
+    )
+    firecrawl_api_key: str = Field(
+        "",
+        description="Firecrawl API Key",
+        json_schema_extra={"secret": True},
+    )
+    jina_api_key: str = Field(
+        "",
+        description="Jina AI API Key",
+        json_schema_extra={"secret": True},
+    )
+    priority: str = Field(
+        "brave,tavily,firecrawl,jina",
+        description="服务商优先级（逗号分隔，越靠前越优先）",
+    )
+    max_results: int = Field(10, ge=1, le=20, description="搜索默认最大结果数")
+    timeout: float = Field(30.0, ge=1, le=120, description="请求超时（秒）")
+
+
 class AppConfig(BaseModel):
     """应用总配置"""
 
@@ -103,3 +134,4 @@ class AppConfig(BaseModel):
     security: SecurityConfig = SecurityConfig()
     ui: UIConfig = UIConfig()
     mcp: MCPConfig = MCPConfig()
+    search: SearchConfig = SearchConfig()
