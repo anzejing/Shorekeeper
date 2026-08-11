@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useKunMessage, useKunAlert } from '@kungal/ui-vue'
 import { useModelsStore } from '../stores/models'
 import { testConnection } from '../api/models'
@@ -20,6 +20,13 @@ onMounted(async () => {
 // ─── Tab ───
 
 const activeTab = ref<'models' | 'providers' | 'catalog'>('models')
+
+// 切到目录 Tab 时刷新 provider 列表（同步后数据才有缓存）
+watch(activeTab, (tab) => {
+  if (tab === 'catalog') {
+    store.loadCatalogProviders(catalogSearch.value)
+  }
+})
 
 // ─── Provider 弹窗 ───
 

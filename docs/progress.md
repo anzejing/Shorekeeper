@@ -82,6 +82,23 @@ LiteLLM                集成                ✅ 完成      (早期)
 
 ## 开发记录
 
+### 2026-08-11（模型管理：后端 + 前端 + 测试完成）
+
+**实现**（详见 `docs/models-management.md`）：
+
+| 模块 | 说明 |
+|---|---|
+| 后端 `models_config` | Provider/Model CRUD、models.dev 目录同步（ETag 增量）、/models 端点适配（openai/anthropic/gemini 三格式）、全局当前模型、测试连接 |
+| 后端 runtime | per-run model/llm_extra 持久化于 RunSnapshot.metadata，挂起恢复不串模型（热切换） |
+| 后端 config | 移除 runtime 段 + SHOREKEEPER_RUNTIME_* env 覆盖 |
+| 前端 | /models 页（当前模型/Provider/目录三 Tab）、聊天页二级模型选择器、ProviderFormModal（含测试） |
+| 测试 | 新增 23 个（models API + 热切换集成），后端共 477 通过 |
+
+**实测结论**：
+- litellm 1.94.1 的 `openai_like/` 前缀不可用（Unmapped provider），兼容端点用 `openai/` + api_base
+- models.dev 真实同步：183 providers / 6253 models，数据日期 2026-08-11
+- 真实聊天全链路验证通过（SSE + 模型持久化 + 无模型时 400 拦截）
+
 ### 2026-08-11（模型管理：文档与设计定稿）
 
 **背景**：旧机制只有单模型（config.yaml runtime 段 + .env 覆盖），改模型需改文件 + 重启。

@@ -174,9 +174,13 @@ CREATE TABLE IF NOT EXISTS model_catalog_meta (
 | kind | 前缀 | base_url 处理 |
 |---|---|---|
 | openai | `openai/{model}` | 留空用官方；有值传 api_base |
-| openai_like | `openai_like/{model}` | 必填 api_base |
+| openai_like | `openai/{model}` | 必填 api_base |
 | anthropic | `anthropic/{model}` | 留空用官方 |
 | gemini | `gemini/{model}` | 留空用官方 |
+
+> ⚠️ **实测结论（litellm 1.94.1）**：`openai_like/` 前缀报 `LiteLLMUnknownProvider`（Unmapped provider），
+> 不可用。OpenAI 兼容端点与 OpenAI 官方在 litellm 层**均使用 `openai/` 前缀**，区别仅在于
+> openai_like 必须配置 api_base。kind 保留两种类型是前端语义区分（是否自定义端点）。
 
 ## 7. 风险与边界
 
