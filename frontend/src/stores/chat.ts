@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { chatStream, connectSSE, type SSEEvent } from '../api/chat'
+import { useModelsStore } from './models'
 import {
   fetchSessions,
   fetchMessages,
@@ -195,9 +196,18 @@ export const useChatStore = defineStore('chat', () => {
     messages.value.push(assistantMsg)
 
     try {
+      // 携带当前模型（provider + model）
+      const modelsStore = useModelsStore()
+      const current = modelsStore.current
       const { run_id, session_id } = await chatStream({
         message: content,
         session_id: currentSessionId.value ?? undefined,
+        model: current
+          ? {
+              provider_id: current.provider_id,
+              model_id: current.model_id,
+            }
+          : undefined,
       })
 
       currentRunId.value = run_id

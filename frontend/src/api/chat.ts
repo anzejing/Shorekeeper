@@ -3,6 +3,8 @@ const BASE = '/api/chat'
 export interface ChatStreamRequest {
   message: string
   session_id?: string
+  /** 指定模型（provider + model），缺省用后端全局当前模型 */
+  model?: { provider_id: string; model_id: string }
 }
 
 export interface ChatStreamResponse {

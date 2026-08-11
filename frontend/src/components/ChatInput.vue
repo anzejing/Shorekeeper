@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useKunMessage } from '@kungal/ui-vue'
+import { useModelsStore } from '../stores/models'
+import ModelSelector from './ModelSelector.vue'
 
 const props = defineProps<{
   disabled?: boolean
@@ -11,11 +14,27 @@ const emit = defineEmits<{
   stop: []
 }>()
 
+const modelsStore = useModelsStore()
 const inputText = ref('')
+
+onMounted(async () => {
+  // 加载 provider / 当前模型，供选择器使用
+  await modelsStore.init()
+  for (const p of modelsStore.providers) {
+    if (!modelsStore.modelsByProvider[p.provider_id]) {
+      await modelsStore.loadModels(p.provider_id)
+    }
+  }
+})
 
 function handleSend() {
   const text = inputText.value.trim()
   if (!text || props.disabled) return
+  // 未选择当前模型 → 提示并阻止发送
+  if (!modelsStore.hasCurrentModel) {
+    useKunMessage('请先在「模型」页选择当前模型', 'warn')
+    return
+  }
   emit('send', text)
   inputText.value = ''
 }
@@ -26,10 +45,41 @@ function handleKeydown(e: KeyboardEvent) {
     handleSend()
   }
 }
+
+async function handleModelChange(providerId: string, modelId: string) {
+  try {
+    await modelsStore.setCurrentModel(providerId, modelId)
+    useKunMessage(`当前模型: ${modelsStore.currentLabel}`, 'success')
+  } catch (e: any) {
+    useKunMessage(e.message || '切换失败', 'error')
+  }
+}
 </script>
 
 <template>
   <div class="chat-input-wrapper">
+    <!-- 模型选择器工具条（输入框左上方） -->
+    <div class="chat-toolbar">
+      <template v-if="modelsStore.hasCurrentModel">
+        <KunChip size="sm" color="primary" variant="flat">
+          <KunIcon name="lucide:sparkles" class="mr-1" style="font-size: 12px" />
+          {{ modelsStore.currentLabel }}
+        </KunChip>
+        <ModelSelector
+          :model="modelsStore.current"
+          compact
+          @change="handleModelChange"
+        />
+      </template>
+      <template v-else>
+        <span class="toolbar-hint">
+          <KunIcon name="lucide:alert-circle" />
+          尚未选择模型，发送前请先选择
+          <RouterLink to="/models" class="toolbar-link">去「模型」页配置 →</RouterLink>
+        </span>
+      </template>
+    </div>
+
     <div class="chat-input-box">
       <textarea
         v-model="inputText"
@@ -74,8 +124,34 @@ function handleKeydown(e: KeyboardEvent) {
 
 <style scoped>
 .chat-input-wrapper {
-  padding: 12px 24px 16px;
+  padding: 4px 24px 16px;
   flex-shrink: 0;
+}
+
+/* 模型选择器工具条 */
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 8px;
+  min-height: 32px;
+}
+
+.toolbar-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--kun-color-text-secondary, #9ca3af);
+}
+
+.toolbar-link {
+  color: var(--kun-color-primary, #3b82f6);
+  text-decoration: none;
+}
+
+.toolbar-link:hover {
+  text-decoration: underline;
 }
 
 .chat-input-box {
