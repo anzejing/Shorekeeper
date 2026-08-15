@@ -1023,3 +1023,117 @@ class TestProviderDisable:
 
             resp = await client.get("/api/models/providers/test-provider/models")
             assert len(resp.json()) == 1
+
+
+# ─── models_url 推导（避免 /v1 重复） ─────────────────────
+
+
+class TestModelsUrlDerivation:
+    """anthropic/gemini 端点若已含版本段，推导 models_url 时不重复拼接。"""
+
+    @pytest.mark.asyncio
+    async def test_anthropic_compat_base_keeps_v1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.models_config.schema import ModelProvider
+        from app.models_config.sync_provider import fetch_provider_models
+
+        seen: dict[str, str] = {}
+
+        async def fake_get_json(url, headers, timeout, proxy_url=None, fallback_direct=True):
+            seen["url"] = url
+            return {"data": []}
+
+        monkeypatch.setattr(
+            "app.models_config.sync_provider._get_json", fake_get_json
+        )
+        provider = ModelProvider(
+            provider_id="minimax",
+            name="MiniMax",
+            kind="anthropic",
+            base_url="https://api.minimaxi.com/anthropic/v1",
+            api_key="sk-x",
+        )
+        await fetch_provider_models(provider)
+        assert seen["url"] == "https://api.minimaxi.com/anthropic/v1/models"
+
+    @pytest.mark.asyncio
+    async def test_anthropic_official_appends_v1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.models_config.schema import ModelProvider
+        from app.models_config.sync_provider import fetch_provider_models
+
+        seen: dict[str, str] = {}
+
+        async def fake_get_json(url, headers, timeout, proxy_url=None, fallback_direct=True):
+            seen["url"] = url
+            return {"data": []}
+
+        monkeypatch.setattr(
+            "app.models_config.sync_provider._get_json", fake_get_json
+        )
+        provider = ModelProvider(
+            provider_id="anthropic",
+            name="Anthropic",
+            kind="anthropic",
+            base_url="",
+            api_key="sk-x",
+        )
+        await fetch_provider_models(provider)
+        assert seen["url"] == "https://api.anthropic.com/v1/models"
+
+    @pytest.mark.asyncio
+    async def test_gemini_with_v1beta_keeps(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.models_config.schema import ModelProvider
+        from app.models_config.sync_provider import fetch_provider_models
+
+        seen: dict[str, str] = {}
+
+        async def fake_get_json(url, headers, timeout, proxy_url=None, fallback_direct=True):
+            seen["url"] = url
+            return {"models": []}
+
+        monkeypatch.setattr(
+            "app.models_config.sync_provider._get_json", fake_get_json
+        )
+        provider = ModelProvider(
+            provider_id="gemini",
+            name="Gemini",
+            kind="gemini",
+            base_url="https://generativelanguage.googleapis.com/v1beta",
+            api_key="sk-x",
+        )
+        await fetch_provider_models(provider)
+        # gemini 分支会追加 ?key= 参数，仅验证路径推导不重复 /v1beta
+        assert seen["url"].startswith(
+            "https://generativelanguage.googleapis.com/v1beta/models"
+        )
+
+    @pytest.mark.asyncio
+    async def test_openai_like_with_v1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from app.models_config.schema import ModelProvider
+        from app.models_config.sync_provider import fetch_provider_models
+
+        seen: dict[str, str] = {}
+
+        async def fake_get_json(url, headers, timeout, proxy_url=None, fallback_direct=True):
+            seen["url"] = url
+            return {"data": []}
+
+        monkeypatch.setattr(
+            "app.models_config.sync_provider._get_json", fake_get_json
+        )
+        provider = ModelProvider(
+            provider_id="x",
+            name="X",
+            kind="openai_like",
+            base_url="https://x.local/v1",
+            api_key="sk-x",
+        )
+        await fetch_provider_models(provider)
+        assert seen["url"] == "https://x.local/v1/models"

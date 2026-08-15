@@ -88,8 +88,16 @@ function slugify(s: string) {
 function deriveModelsUrl(baseUrl: string, kind: string) {
   const b = baseUrl.trim().replace(/\/+$/, '')
   if (!b) return ''
-  if (kind === 'anthropic') return `${b}/v1/models`
-  if (kind === 'gemini') return `${b}/v1beta/models`
+  if (kind === 'anthropic') {
+    // Anthropic 兼容端点常已带 /v1（如 .../anthropic/v1），避免重复拼接
+    return b.endsWith('/v1') ? `${b}/models` : `${b}/v1/models`
+  }
+  if (kind === 'gemini') {
+    // 官方端点不带 /v1beta；用户已带版本段则直接拼 /models
+    return b.endsWith('/v1beta') || b.endsWith('/v1')
+      ? `${b}/models`
+      : `${b}/v1beta/models`
+  }
   return `${b}/models`
 }
 

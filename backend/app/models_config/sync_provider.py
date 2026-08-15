@@ -71,7 +71,13 @@ async def fetch_provider_models(
             url = models_url
         else:
             base = provider.base_url or _ANTHROPIC_BASE
-            url = f"{base.rstrip('/')}/v1/models"
+            base = base.rstrip("/")
+            # base 已含 /v1（如 Anthropic 兼容端点 .../anthropic/v1）时避免重复拼接
+            url = (
+                f"{base}/models"
+                if base.endswith("/v1")
+                else f"{base}/v1/models"
+            )
         headers = {
             "x-api-key": provider.api_key,
             "anthropic-version": "2023-06-01",
@@ -84,7 +90,13 @@ async def fetch_provider_models(
             url = models_url
         else:
             base = provider.base_url or _GEMINI_BASE
-            url = f"{base.rstrip('/')}/v1beta/models"
+            base = base.rstrip("/")
+            # 官方端点不带 /v1beta；用户已带版本段则直接拼 /models
+            url = (
+                f"{base}/models"
+                if base.endswith("/v1beta") or base.endswith("/v1")
+                else f"{base}/v1beta/models"
+            )
         if provider.api_key:
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}key={provider.api_key}"
