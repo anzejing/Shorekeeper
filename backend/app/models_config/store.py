@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS model_providers (
     base_url TEXT NOT NULL DEFAULT '',
     api_key TEXT NOT NULL DEFAULT '',
     enabled INTEGER NOT NULL DEFAULT 1,
+    use_proxy INTEGER NOT NULL DEFAULT 0,
     source TEXT NOT NULL DEFAULT 'custom',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -66,7 +67,25 @@ SETTING_CURRENT_MODEL = "current_model"
 async def init_models_config_db(db: aiosqlite.Connection) -> None:
     """初始化模型配置表。"""
     await db.executescript(_CREATE_TABLES)
+    await _migrate(db)
     await db.commit()
+
+
+async def _migrate(db: aiosqlite.Connection) -> None:
+    """旧库迁移：补齐缺失列（幂等，列已存在则跳过）。"""
+    # model_providers.use_proxy（v2：LLM 请求走代理开关）
+    await _ensure_column(db, "model_providers", "use_proxy", "INTEGER NOT NULL DEFAULT 0")
+
+
+async def _ensure_column(
+    db: aiosqlite.Connection, table: str, column: str, ddl: str
+) -> None:
+    """检查列是否存在，不存在则 ALTER TABLE 添加。"""
+    cursor = await db.execute(f"PRAGMA table_info({table})")
+    rows = await cursor.fetchall()
+    if any(row[1] == column for row in rows):
+        return
+    await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
 def _now_iso() -> str:
@@ -82,6 +101,7 @@ def _row_to_provider(row: aiosqlite.Row) -> ModelProvider:
         base_url=row["base_url"],
         api_key=row["api_key"],
         enabled=bool(row["enabled"]),
+        use_proxy=bool(row["use_proxy"]) if "use_proxy" in row.keys() else False,
         source=row["source"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -125,9 +145,9 @@ class ModelConfigStore:
     async def create_provider(self, provider: ModelProvider) -> None:
         await self._db.execute(
             "INSERT INTO model_providers"
-            " (provider_id, name, kind, base_url, api_key, enabled, source,"
+            " (provider_id, name, kind, base_url, api_key, enabled, use_proxy, source,"
             "  created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 provider.provider_id,
                 provider.name,
@@ -135,6 +155,7 @@ class ModelConfigStore:
                 provider.base_url,
                 provider.api_key,
                 int(provider.enabled),
+                int(provider.use_proxy),
                 provider.source,
                 provider.created_at,
                 provider.updated_at,
@@ -144,14 +165,15 @@ class ModelConfigStore:
 
     async def update_provider(self, provider: ModelProvider) -> None:
         await self._db.execute(
-            "UPDATE model_providers SET name=?, kind=?, base_url=?, api_key=?,"
-            " enabled=?, source=?, updated_at=? WHERE provider_id=?",
+            "UPDATE model_providers SET name=?, kind=?, base_url=?, api_key=?, enabled=?,"
+            " use_proxy=?, source=?, updated_at=? WHERE provider_id=?",
             (
                 provider.name,
                 provider.kind,
                 provider.base_url,
                 provider.api_key,
                 int(provider.enabled),
+                int(provider.use_proxy),
                 provider.source,
                 provider.updated_at,
                 provider.provider_id,

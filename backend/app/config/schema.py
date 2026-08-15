@@ -107,6 +107,23 @@ class SearchConfig(BaseModel):
     timeout: float = Field(30.0, ge=1, le=120, description="请求超时（秒）")
 
 
+class ProxyConfig(BaseModel):
+    """代理配置（外网请求统一走代理，失败可回退直连）"""
+
+    enabled: bool = Field(False, description="全局代理开关（models.dev / web_search 跟随）")
+    url: str = Field(
+        "",
+        description="代理地址（http/https，可含认证，如 http://user:pass@host:port）",
+        json_schema_extra={"secret": True},
+    )
+    fallback_direct: bool = Field(
+        True, description="代理失败时自动直连重试（仅连接类错误）"
+    )
+    timeout: float = Field(
+        10.0, ge=1, le=120, description="代理连接超时（秒）"
+    )
+
+
 class AppConfig(BaseModel):
     """应用总配置（模型相关配置已迁移至数据库，见 models_config 模块）"""
 
@@ -117,3 +134,4 @@ class AppConfig(BaseModel):
     ui: UIConfig = UIConfig()
     mcp: MCPConfig = MCPConfig()
     search: SearchConfig = SearchConfig()
+    proxy: ProxyConfig = ProxyConfig()

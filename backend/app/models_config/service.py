@@ -18,10 +18,18 @@ from typing import Any
 
 from litellm import acompletion
 
+from app.config.service import ConfigService
 from app.models_config.litellm_mapping import (
     build_litellm_name,
     default_base_url,
     validate_kind,
+)
+from app.net.proxy import (
+    build_proxy_client,
+    close_proxy_client,
+    fallback_direct_enabled,
+    get_proxy_url,
+    is_conn_error,
 )
 from app.models_config.schema import (
     CatalogMeta,
@@ -58,9 +66,15 @@ def _now_iso() -> str:
 class ModelConfigService:
     """模型配置服务，模块唯一对外入口。"""
 
-    def __init__(self, store: ModelConfigStore, data_dir: Path) -> None:
+    def __init__(
+        self,
+        store: ModelConfigStore,
+        data_dir: Path,
+        config_service: ConfigService | None = None,
+    ) -> None:
         self._store = store
         self._data_dir = data_dir
+        self._config = config_service or ConfigService.get_instance()
 
     # ─── Provider CRUD ────────────────────────────────────
 
@@ -97,6 +111,7 @@ class ModelConfigService:
             base_url=base_url or default_base_url(kind),
             api_key=(data.get("api_key") or "").strip(),
             enabled=bool(data.get("enabled", True)),
+            use_proxy=bool(data.get("use_proxy", False)),
             source=data.get("source", "custom"),
             created_at=now,
             updated_at=now,
@@ -136,6 +151,7 @@ class ModelConfigService:
                 "base_url": base_url,
                 "api_key": api_key,
                 "enabled": bool(data.get("enabled", existing.enabled)),
+                "use_proxy": bool(data.get("use_proxy", existing.use_proxy)),
                 "source": data.get("source", existing.source),
                 "updated_at": _now_iso(),
             }
@@ -197,7 +213,12 @@ class ModelConfigService:
             raise KeyError(f"provider 不存在: {provider_id}")
 
         try:
-            fetched = await fetch_provider_models(provider)
+            proxy_url = get_proxy_url(self._config) if provider.use_proxy else None
+            fetched = await fetch_provider_models(
+                provider,
+                proxy_url=proxy_url,
+                fallback_direct=fallback_direct_enabled(self._config),
+            )
         except ProviderSyncError as e:
             raise ValueError(str(e)) from e
 
@@ -254,7 +275,11 @@ class ModelConfigService:
     async def sync_catalog(self) -> dict[str, Any]:
         """同步 models.dev 目录（ETag 增量）。"""
         meta = await self._store.get_catalog_meta()
-        data, new_etag, data_date, changed = await fetch_catalog(meta.etag)
+        data, new_etag, data_date, changed = await fetch_catalog(
+            meta.etag,
+            proxy_url=get_proxy_url(self._config),
+            fallback_direct=fallback_direct_enabled(self._config),
+        )
 
         if not changed:
             return {"status": "unchanged", "data_date": meta.data_date}
@@ -387,6 +412,8 @@ class ModelConfigService:
             llm_extra["api_key"] = provider.api_key
         if provider.base_url:
             llm_extra["base_url"] = provider.base_url
+        # LLM 请求是否走代理（透传给 native_litellm_client）
+        llm_extra["use_proxy"] = provider.use_proxy
         return {
             "litellm_name": entry.litellm_name,
             "llm_extra": llm_extra,
@@ -415,11 +442,37 @@ class ModelConfigService:
         if provider.base_url:
             kwargs["api_base"] = provider.base_url
 
+        # 代理：provider.use_proxy 开启且全局代理可用时走代理，连接失败回退直连
+        proxy_client: AsyncOpenAI | None = None
+        if provider.use_proxy:
+            proxy_url = get_proxy_url(self._config)
+            if proxy_url:
+                proxy_client = build_proxy_client(
+                    proxy_url, provider.api_key, provider.base_url
+                )
+                kwargs["client"] = proxy_client
+
         start = time.monotonic()
         try:
-            resp = await acompletion(**kwargs)
+            try:
+                resp = await acompletion(**kwargs)
+            except Exception as e:
+                if (
+                    proxy_client is not None
+                    and fallback_direct_enabled(self._config)
+                    and is_conn_error(e)
+                ):
+                    log.warning("测试连接代理失败，回退直连: %s", e)
+                    kwargs.pop("client", None)
+                    resp = await acompletion(**kwargs)
+                else:
+                    raise
         except Exception as e:
             raise ValueError(f"连接失败: {e}") from e
+        finally:
+            if proxy_client is not None:
+                await close_proxy_client(proxy_client)
+
         latency_ms = int((time.monotonic() - start) * 1000)
         return {
             "ok": True,

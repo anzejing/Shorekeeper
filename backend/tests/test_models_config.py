@@ -275,7 +275,13 @@ class TestCatalogSync:
     ) -> None:
         """ETag 未变化 → 返回 unchanged。"""
         # 首次同步
-        async def fake_fetch(etag: str = "", *, timeout: float = 120.0):
+        async def fake_fetch(
+            etag: str = "",
+            *,
+            timeout: float = 120.0,
+            proxy_url: str | None = None,
+            fallback_direct: bool = True,
+        ):
             return (
                 {
                     "openai": {
@@ -302,7 +308,13 @@ class TestCatalogSync:
             assert resp.json()["status"] == "updated"
 
         # 第二次：etag 命中 → 未变化
-        async def fake_fetch_304(etag: str = "", *, timeout: float = 120.0):
+        async def fake_fetch_304(
+            etag: str = "",
+            *,
+            timeout: float = 120.0,
+            proxy_url: str | None = None,
+            fallback_direct: bool = True,
+        ):
             return None, etag, "", False
 
         monkeypatch.setattr(
@@ -408,7 +420,13 @@ class TestProviderSync:
     ) -> None:
         await _create_provider(service)
         # 模拟 /models 端点返回
-        async def fake_fetch(provider, *, timeout: float = 30.0):
+        async def fake_fetch(
+            provider,
+            *,
+            timeout: float = 30.0,
+            proxy_url: str | None = None,
+            fallback_direct: bool = True,
+        ):
             return [
                 {"id": "deepseek-v4-flash", "display_name": "DeepSeek V4 Flash"},
                 {"id": "deepseek-v4-pro", "display_name": "DeepSeek V4 Pro"},
@@ -435,7 +453,13 @@ class TestProviderSync:
     ) -> None:
         await _create_provider(service)
 
-        async def fake_fetch(provider, *, timeout: float = 30.0):
+        async def fake_fetch(
+            provider,
+            *,
+            timeout: float = 30.0,
+            proxy_url: str | None = None,
+            fallback_direct: bool = True,
+        ):
             from app.models_config.sync_provider import ProviderSyncError
 
             raise ProviderSyncError("HTTP 401")

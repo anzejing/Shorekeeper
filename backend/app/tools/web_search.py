@@ -14,6 +14,7 @@ API Key 解析优先级：config.yaml（search 段）→ 环境变量 → pi-sea
 from __future__ import annotations
 
 import json
+import inspect
 import logging
 import os
 import time
@@ -24,6 +25,7 @@ from typing import Any
 import aiohttp
 
 from app.config.service import ConfigService
+from app.net.proxy import fallback_direct_enabled, get_proxy_url, is_conn_error
 from app.runtime.models import SideEffectLevel, TextPart, ToolCall, ToolDef, ToolResult
 
 log = logging.getLogger(__name__)
@@ -122,10 +124,64 @@ class SearchResponse:
 class SearchProvider:
     """搜索服务商基类。"""
 
-    def __init__(self, api_key: str, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        timeout: float = 30.0,
+        proxy_url: str | None = None,
+        fallback_direct: bool = True,
+    ) -> None:
         self.api_key = api_key
         self.timeout = timeout
+        self.proxy_url = proxy_url
+        self.fallback_direct = fallback_direct
         self.name = self.__class__.__name__.replace("Provider", "").lower()
+
+    async def _request(
+        self,
+        session: aiohttp.ClientSession,
+        method: str,
+        url: str,
+        **kwargs: Any,
+    ) -> aiohttp.ClientResponse:
+        """发请求：代理连接失败时按 fallback_direct 回退直连重试一次。
+
+        Args:
+            session: 调用方创建的 ClientSession（生命周期由调用方管理）。
+        """
+        try:
+            return await self._request_once(
+                session, method, url, self.proxy_url, **kwargs
+            )
+        except Exception as e:
+            if self.proxy_url and self.fallback_direct and is_conn_error(e):
+                log.warning("web_search %s 代理失败，回退直连: %s", self.name, e)
+                return await self._request_once(
+                    session, method, url, None, **kwargs
+                )
+            raise
+
+    @staticmethod
+    async def _request_once(
+        session: aiohttp.ClientSession,
+        method: str,
+        url: str,
+        proxy: str | None,
+        **kwargs: Any,
+    ) -> aiohttp.ClientResponse:
+        """单次请求（带或不带代理），按 method 分发 get/post。
+
+        兼容真实 aiohttp（session.get 返回协程）与测试 mock（直接返回对象）。
+        """
+        if proxy:
+            kwargs["proxy"] = proxy
+        if method == "GET":
+            resp = session.get(url, **kwargs)
+        else:
+            resp = session.post(url, **kwargs)
+        if inspect.isawaitable(resp):
+            return await resp
+        return resp
 
     async def search(self, query: str, **kwargs: Any) -> SearchResponse:
         """执行搜索。"""
@@ -144,8 +200,14 @@ class BraveProvider(SearchProvider):
 
     BASE_URL = "https://api.search.brave.com/res/v1"
 
-    def __init__(self, api_key: str, timeout: float = 30.0) -> None:
-        super().__init__(api_key, timeout)
+    def __init__(
+        self,
+        api_key: str,
+        timeout: float = 30.0,
+        proxy_url: str | None = None,
+        fallback_direct: bool = True,
+    ) -> None:
+        super().__init__(api_key, timeout, proxy_url, fallback_direct)
         self.headers = {
             "Accept": "application/json",
             "X-Subscription-Token": api_key,
@@ -161,7 +223,7 @@ class BraveProvider(SearchProvider):
             params["country"] = kwargs["country"]
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(
+            async with await self._request(session, "GET", 
                 f"{self.BASE_URL}/web/search",
                 headers=self.headers,
                 params=params,
@@ -197,8 +259,14 @@ class TavilyProvider(SearchProvider):
 
     BASE_URL = "https://api.tavily.com"
 
-    def __init__(self, api_key: str, timeout: float = 30.0) -> None:
-        super().__init__(api_key, timeout)
+    def __init__(
+        self,
+        api_key: str,
+        timeout: float = 30.0,
+        proxy_url: str | None = None,
+        fallback_direct: bool = True,
+    ) -> None:
+        super().__init__(api_key, timeout, proxy_url, fallback_direct)
         self.headers = {"Content-Type": "application/json"}
 
     async def search(self, query: str, **kwargs: Any) -> SearchResponse:
@@ -213,7 +281,7 @@ class TavilyProvider(SearchProvider):
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(
+            async with await self._request(session, "POST", 
                 f"{self.BASE_URL}/search",
                 headers=self.headers,
                 json=payload,
@@ -249,7 +317,7 @@ class TavilyProvider(SearchProvider):
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(
+            async with await self._request(session, "POST", 
                 f"{self.BASE_URL}/extract",
                 headers=self.headers,
                 json=payload,
@@ -275,8 +343,14 @@ class FirecrawlProvider(SearchProvider):
 
     BASE_URL = "https://api.firecrawl.dev/v1"
 
-    def __init__(self, api_key: str, timeout: float = 30.0) -> None:
-        super().__init__(api_key, timeout)
+    def __init__(
+        self,
+        api_key: str,
+        timeout: float = 30.0,
+        proxy_url: str | None = None,
+        fallback_direct: bool = True,
+    ) -> None:
+        super().__init__(api_key, timeout, proxy_url, fallback_direct)
         self.headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
@@ -292,7 +366,7 @@ class FirecrawlProvider(SearchProvider):
             payload["exclude_domains"] = kwargs["exclude_domains"]
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(
+            async with await self._request(session, "POST", 
                 f"{self.BASE_URL}/search",
                 headers=self.headers,
                 json=payload,
@@ -327,7 +401,7 @@ class FirecrawlProvider(SearchProvider):
             payload["onlyMainContent"] = kwargs["only_main_content"]
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(
+            async with await self._request(session, "POST", 
                 f"{self.BASE_URL}/scrape",
                 headers=self.headers,
                 json=payload,
@@ -349,8 +423,14 @@ class FirecrawlProvider(SearchProvider):
 class JinaProvider(SearchProvider):
     """Jina AI 服务商（搜索 + 提取）。"""
 
-    def __init__(self, api_key: str, timeout: float = 30.0) -> None:
-        super().__init__(api_key, timeout)
+    def __init__(
+        self,
+        api_key: str,
+        timeout: float = 30.0,
+        proxy_url: str | None = None,
+        fallback_direct: bool = True,
+    ) -> None:
+        super().__init__(api_key, timeout, proxy_url, fallback_direct)
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Accept": "application/json",
@@ -361,7 +441,7 @@ class JinaProvider(SearchProvider):
         max_results = min(int(kwargs.get("max_results", 10)), 20)
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(
+            async with await self._request(session, "GET", 
                 f"https://s.jina.ai/{query}",
                 headers=self.headers,
                 timeout=aiohttp.ClientTimeout(total=self.timeout),
@@ -390,7 +470,7 @@ class JinaProvider(SearchProvider):
 
     async def extract(self, url: str, **kwargs: Any) -> dict[str, Any]:
         async with aiohttp.ClientSession() as session:
-            async with session.get(
+            async with await self._request(session, "GET", 
                 f"https://r.jina.ai/{url}",
                 headers=self.headers,
                 timeout=aiohttp.ClientTimeout(total=self.timeout),
@@ -506,16 +586,24 @@ class WebSearchExecutor:
         return svc.config.search
 
     def _build_providers(self) -> list[SearchProvider]:
-        """按优先级构建可用服务商列表（只包含已配置 API Key 的）。"""
+        """按优先级构建可用服务商列表（只包含已配置 API Key 的）。
+
+        跟随全局代理开关：开启时服务商请求走代理，失败回退直连。
+        """
         cfg = self._search_config()
+        svc = self._config_service or ConfigService.get_instance()
         pi_keys = _load_pi_search_keys()
+        proxy_url = get_proxy_url(svc)
+        fallback_direct = fallback_direct_enabled(svc)
 
         available: dict[str, SearchProvider] = {}
         for name in _PROVIDER_NAMES:
             api_key = _resolve_api_key(name, cfg, pi_keys)
             if not api_key:
                 continue
-            available[name] = _PROVIDER_CLASSES[name](api_key, cfg.timeout)
+            available[name] = _PROVIDER_CLASSES[name](
+                api_key, cfg.timeout, proxy_url, fallback_direct
+            )
 
         priority = [p.strip() for p in cfg.priority.split(",") if p.strip()]
         ordered = [name for name in priority if name in available]

@@ -4,8 +4,13 @@
 
 ## 进行中的工作
 
-- **模型管理（多 Provider / 多 Model）**：设计文档 `docs/models-management.md` 已定稿（用户已确认），
-  实现进行中。完成后替换旧 runtime 单模型机制。
+- **代理配置 + 失败直连回退**：设计文档 `docs/proxy-config.md` 已定稿（用户已确认 5 个决策点），
+  实现进行中。覆盖 LLM API（per-provider use_proxy）、models.dev（默认走代理）、/models 同步、web_search。
+
+## 已完成
+
+- **模型管理（多 Provider / 多 Model）**：设计文档 `docs/models-management.md` 已定稿（用户已确认），实现已完成。
+  替换旧 runtime 单模型机制。
 
 ## 架构完成度
 
@@ -81,6 +86,29 @@ LiteLLM                集成                ✅ 完成      (早期)
 | 权限审批页：MiMo 视觉验证 | ✅ | 布局/Tab 切换/卡片样式均正常 |
 
 ## 开发记录
+
+### 2026-08-15（代理配置 + 失败直连回退）
+
+**背景**：网络原因需要代理；litellm 1.96.2 无 proxy 参数、环境变量代理不生效（实测 2 次均直连）。
+
+**实现**（详见 `docs/proxy-config.md`）：
+
+| 模块 | 说明 |
+|---|---|
+| Config | 新增 `proxy` 段（enabled/url/fallback_direct/timeout），设置页自动渲染「代理」分组，url 标记 secret 掩码 |
+| Net（新增 `app/net/proxy.py`） | 代理配置读取（get_proxy_url 等）+ 连接类错误判定（is_conn_error：aiohttp/httpx/socket/TLS/litellm 包装/超时）+ 预建代理 client（build_proxy_client） |
+| ModelConfig | `ModelProvider.use_proxy` 字段（DB 列 + 旧库 ALTER 迁移）；resolve_model 透传 use_proxy 至 llm_extra（随 Run 持久化，热切换不串）；test_connection 走代理 + 回退 |
+| models.dev 同步 | 跟随全局代理开关（默认走代理），连接失败回退直连 |
+| provider /models 同步 | 跟随 provider.use_proxy，连接失败回退直连 |
+| Runtime | native_litellm_client 走代理（预建 AsyncOpenAI + httpx proxy 传给 acompletion(client=...)），首包前连接失败回退直连（避免重复输出） |
+| web_search | 跟随全局代理开关，代理失败回退直连后回退下一服务商 |
+| 前端 | ProviderFormModal 加「走代理」开关；设置页代理分组自动渲染 |
+| 测试 | 新增 test_proxy_config.py 22 个（配置解析/错误分类/fallback/mock/迁移），后端共 517 通过 |
+
+**实测结论**：
+- 真实代理 127.0.0.1:7890 全链路：LLM 聊天流、models.dev 同步（185 providers / 6584 models）、/models 同步（26 模型）、测试连接均正常
+- fallback 实测：代理指向不可达地址 → 自动直连成功（LLM）；models.dev 代理失败 → 回退直连（大陆直连不通时正确报错）
+- 设置页 PUT /api/config/proxy.* → config.yaml 持久化正常
 
 ### 2026-08-11（模型管理：后端 + 前端 + 测试完成）
 

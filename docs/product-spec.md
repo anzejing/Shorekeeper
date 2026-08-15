@@ -594,6 +594,8 @@ interface ConfigItem {
 | 存储 | 存储配置 | 数据库路径、备份策略 |
 | 安全 | 安全配置 | 会话超时、权限策略 |
 | 界面 | 界面配置 | 主题、语言、字体大小 |
+| 搜索 | 搜索配置 | 搜索服务商 API Key、优先级（见 5.7 代理 / 相关功能） |
+| 代理 | 代理配置 | 全局开关、代理地址、失败直连回退（见 5.8） |
 
 **验收标准**：
 - [ ] 配置项按分组正确显示
@@ -604,6 +606,42 @@ interface ConfigItem {
 - UI 层（分组组件）
 
 ---
+
+### 5.7 代理配置
+
+**描述**：为外网请求（LLM API、models.dev 目录同步、provider /models 同步、web_search 工具）
+提供统一代理支持，代理失败时自动直连回退。
+
+**行为**：
+- 设置页「代理」分组：全局开关、代理地址（http/https，secret 掩码）、失败直连回退开关、超时
+- LLM API：Provider 表单「走代理」开关（`use_proxy`），默认关闭，国内直连 Provider 不受影响
+- models.dev 目录同步 / web_search：跟随全局代理开关
+- provider /models 端点同步：跟随 Provider 的 `use_proxy`
+- fallback：仅连接类错误（连接失败/超时）回退直连重试一次；4xx/5xx 业务错误不重试；
+  流式对话仅首包前失败才回退（避免重复输出）
+
+**数据流**：
+
+```
+设置页「代理」分组 → config.yaml proxy 段 → 各网络调用点
+Provider 表单「走代理」开关 → DB model_providers.use_proxy → LLM 请求（resolve_model → llm_extra）
+```
+
+**验收标准**：
+- [ ] 设置页可配置代理并保存到 config.yaml
+- [ ] 代理开启时 models.dev 同步走代理，代理失败自动直连
+- [ ] Provider 可独立设置是否走代理
+- [ ] LLM 请求走代理；连接失败时自动直连重试
+- [ ] web_search 跟随全局代理开关
+
+**影响模块**：
+- Config 模块（ProxyConfig）
+- ModelConfig 模块（ModelProvider.use_proxy）
+- Runtime Adapter（native_litellm_client）
+- 同步模块（models.dev / /models）
+- Tools（web_search）
+
+> 详细设计见 `docs/proxy-config.md`
 
 ### 5.3 配置验证
 

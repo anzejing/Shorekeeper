@@ -24,6 +24,7 @@ class ModelProvider(BaseModel):
     )
     api_key: str = Field("", description="API Key（secret，响应中掩码）")
     enabled: bool = Field(True, description="是否启用")
+    use_proxy: bool = Field(False, description="LLM 请求是否走代理（默认关闭，国内直连 Provider 不受影响）")
     source: str = Field(
         "custom", description="来源: catalog（models.dev 导入）/ custom（自建）"
     )

@@ -74,9 +74,18 @@ pnpm install                     # 或 npm install
 模型配置在 Web 界面完成：打开「模型」页（`/models`）添加 Provider（openai / openai_like / anthropic / gemini）
 并选择模型；api_key 等配置存入数据库。首次启动后若无任何 Provider，请在「模型」页配置。
 
-其他系统配置仍由 `~/.shorekeeper/config.yaml` 管理（可在「配置」页修改）。
+其他系统配置仍由 `~/.shorekeeper/config.yaml` 管理（可在「配置」页修改），包括网络代理：
 
-> 模型管理详细设计见 [docs/models-management.md](docs/models-management.md)。
+```yaml
+proxy:
+  enabled: true                    # 全局代理开关（models.dev 同步 / web_search 跟随）
+  url: "http://127.0.0.1:7890"    # 代理地址（http/https，可含认证）
+  fallback_direct: true            # 代理失败自动直连重试（仅连接类错误）
+  timeout: 10
+```
+
+> LLM 请求是否走代理由每个 Provider 的「走代理」开关决定（「模型」页编辑 Provider 时可设置，默认关闭）。
+> 模型管理详细设计见 [docs/models-management.md](docs/models-management.md)，代理配置见 [docs/proxy-config.md](docs/proxy-config.md)。
 
 ### 4. 启动
 

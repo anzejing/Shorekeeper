@@ -49,6 +49,7 @@ class ProviderRequest(BaseModel):
     base_url: str = ""
     api_key: str = ""
     enabled: bool = True
+    use_proxy: bool = False
     source: str = "custom"
     import_models: bool = False
 
@@ -59,6 +60,7 @@ class ProviderUpdateRequest(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     enabled: bool | None = None
+    use_proxy: bool | None = None
     source: str | None = None
 
 

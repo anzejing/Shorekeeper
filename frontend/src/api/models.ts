@@ -11,6 +11,7 @@ export interface ModelProvider {
   base_url: string
   api_key: string
   enabled: boolean
+  use_proxy: boolean
   source: 'catalog' | 'custom'
   created_at: string
   updated_at: string

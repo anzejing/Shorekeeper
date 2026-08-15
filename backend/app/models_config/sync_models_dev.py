@@ -15,6 +15,7 @@ from typing import Any
 import aiohttp
 
 from app.models_config.litellm_mapping import kind_from_npm
+from app.net.proxy import is_conn_error
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +29,16 @@ async def fetch_catalog(
     etag: str = "",
     *,
     timeout: float = 120.0,
+    proxy_url: str | None = None,
+    fallback_direct: bool = True,
 ) -> tuple[dict[str, Any] | None, str, str, bool]:
     """拉取 models.dev 目录。
+
+    Args:
+        etag: 上次同步的 ETag（304 未变化判断）。
+        timeout: 请求总超时。
+        proxy_url: 代理地址；非空时先走代理。
+        fallback_direct: 代理连接失败时是否回退直连重试一次。
 
     Returns:
         (data, new_etag, data_date, changed)
@@ -39,14 +48,28 @@ async def fetch_catalog(
         - changed: 数据是否变化
     """
     headers = {"If-None-Match": etag} if etag else {}
+    try:
+        return await _fetch_once(headers, proxy_url, timeout)
+    except Exception as e:
+        if proxy_url and fallback_direct and is_conn_error(e):
+            log.warning("models.dev 代理失败，回退直连: %s", e)
+            return await _fetch_once(headers, None, timeout)
+        raise
+
+
+async def _fetch_once(
+    headers: dict[str, str], proxy: str | None, timeout: float
+) -> tuple[dict[str, Any] | None, str, str, bool]:
+    """单次请求 models.dev（带或不带代理）。"""
     async with aiohttp.ClientSession() as session:
         async with session.get(
             MODELS_DEV_URL,
             headers=headers,
+            proxy=proxy,
             timeout=aiohttp.ClientTimeout(total=timeout),
         ) as resp:
             if resp.status == 304:
-                return None, etag, "", False
+                return None, headers.get("If-None-Match", ""), "", False
             if resp.status != 200:
                 raise RuntimeError(f"models.dev 请求失败: HTTP {resp.status}")
             data = await resp.json()

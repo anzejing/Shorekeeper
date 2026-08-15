@@ -2,16 +2,31 @@
 
 调用 litellm.acompletion 进行流式 LLM 调用，
 将 litellm 原始响应规范化为 LiteLLMStreamEvent。
+
+支持代理：provider.use_proxy 开启时，通过预建 AsyncOpenAI（httpx proxy client）
+走代理；代理连接失败（首包前）自动回退直连重试一次。
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
+import logging
+from typing import Any, AsyncIterator
 
+import httpx
 from litellm import acompletion
 from litellm.types.utils import ModelResponse
+from openai import AsyncOpenAI
 
+from app.config.service import ConfigService
+from app.net.proxy import (
+    build_proxy_client,
+    chain_first,
+    close_proxy_client,
+    fallback_direct_enabled,
+    get_proxy_url,
+    is_conn_error,
+)
 from app.runtime.litellm_client import (
     DONE,
     ERROR,
@@ -26,6 +41,8 @@ from app.runtime.litellm_client import (
 )
 from app.runtime.models import CancellationToken, Usage
 
+log = logging.getLogger(__name__)
+
 
 class NativeLiteLLMClient:
     """LiteLLMClient 的真实实现。
@@ -33,6 +50,9 @@ class NativeLiteLLMClient:
     使用 litellm.acompletion 调用模型，支持流式输出。
     将 litellm 的 chunk 格式规范化为 LiteLLMStreamEvent。
     """
+
+    def __init__(self, config_service: ConfigService | None = None) -> None:
+        self._config = config_service or ConfigService.get_instance()
 
     async def stream_completion(
         self,
@@ -53,6 +73,9 @@ class NativeLiteLLMClient:
         # api_key 从 extra 提取
         api_key = extra.pop("api_key", None)
 
+        # use_proxy：provider 是否走代理（不入 litellm kwargs）
+        use_proxy = bool(extra.pop("use_proxy", False))
+
         kwargs: dict = {
             "model": model,
             "messages": request.messages,
@@ -69,77 +92,55 @@ class NativeLiteLLMClient:
         # 合并 provider-specific kwargs
         kwargs.update(extra)
 
+        # 代理：provider.use_proxy 开启且全局代理配置可用时，走代理
+        proxy_client: AsyncOpenAI | None = None
+        if use_proxy:
+            proxy_url = get_proxy_url(self._config)
+            if proxy_url:
+                proxy_client = build_proxy_client(
+                    proxy_url, api_key, api_base
+                )
+                kwargs["client"] = proxy_client
+
         try:
-            response = await acompletion(**kwargs)
+            # 首包前代理连接失败 → 直连重试一次
+            chunks = self._iter_completion(kwargs, cancellation)
+            try:
+                first = await chunks.__anext__()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                if (
+                    proxy_client is not None
+                    and fallback_direct_enabled(self._config)
+                    and is_conn_error(e)
+                ):
+                    log.warning("LLM 请求代理失败，回退直连: %s", e)
+                    await chunks.aclose()
+                    await close_proxy_client(proxy_client)
+                    proxy_client = None
+                    kwargs.pop("client", None)
+                    chunks = self._iter_completion(kwargs, cancellation)
+                    first = await chunks.__anext__()
+                else:
+                    yield LiteLLMStreamEvent(type=ERROR, error=str(e))
+                    raise LiteLLMError(
+                        str(e),
+                        is_retryable=_is_retryable(e),
+                        provider_error=e,
+                    ) from e
 
-            # 遍历流式 chunk
-            tool_call_buffers: dict[int, _ToolCallBuffer] = {}
-
-            async for chunk in response:  # type: ignore
-                # 检查取消
-                if cancellation.is_cancelled:
-                    yield LiteLLMStreamEvent(
-                        type=ERROR, error="操作已取消"
-                    )
-                    return
-
-                # 处理 chunk
-                delta = _extract_delta(chunk)
-                if delta is None:
-                    continue
-
-                # 文本 delta
-                content = delta.get("content")
-                if content:
-                    yield LiteLLMStreamEvent(type=TEXT_DELTA, content=content)
-
-                # 推理 delta（部分模型支持）
-                reasoning = delta.get("reasoning_content") or delta.get("reasoning")
-                if reasoning:
-                    yield LiteLLMStreamEvent(
-                        type=REASONING_DELTA, content=reasoning
-                    )
-
-                # 工具调用 delta
-                tool_calls = delta.get("tool_calls")
-                if tool_calls:
-                    for tc in tool_calls:
-                        idx = tc.get("index", 0)
-                        if idx not in tool_call_buffers:
-                            tool_call_buffers[idx] = _ToolCallBuffer()
-
-                        buf = tool_call_buffers[idx]
-                        fn = tc.get("function", {})
-                        if fn.get("name"):
-                            buf.name = fn["name"]
-                            buf.id = tc.get("id", buf.id)
-                        if fn.get("arguments"):
-                            buf.arguments_parts.append(fn["arguments"])
-
-                        yield LiteLLMStreamEvent(
-                            type=TOOL_CALL_DELTA,
-                            tool_call_id=buf.id,
-                            tool_name=fn.get("name"),
-                            arguments_delta=fn.get("arguments"),
-                        )
-
-                # finish_reason
-                finish_reason = _extract_finish_reason(chunk)
-                if finish_reason:
-                    # 收集 usage
-                    usage = _extract_usage(chunk)
-                    if usage:
-                        yield LiteLLMStreamEvent(type=USAGE, usage=usage)
-
-                    yield LiteLLMStreamEvent(
-                        type=DONE,
-                        finish_reason=finish_reason,
-                        usage=usage,
-                    )
+            # 处理首个 chunk + 后续流
+            async for event in self._iter_events(
+                chunks, first, cancellation
+            ):
+                yield event
 
         except asyncio.CancelledError:
             yield LiteLLMStreamEvent(type=ERROR, error="操作已取消")
             return
+        except LiteLLMError:
+            raise
         except Exception as e:
             yield LiteLLMStreamEvent(type=ERROR, error=str(e))
             raise LiteLLMError(
@@ -147,6 +148,85 @@ class NativeLiteLLMClient:
                 is_retryable=_is_retryable(e),
                 provider_error=e,
             ) from e
+        finally:
+            if proxy_client is not None:
+                await close_proxy_client(proxy_client)
+
+    async def _iter_completion(
+        self, kwargs: dict, cancellation: CancellationToken
+    ) -> AsyncIterator[Any]:
+        """调用 acompletion 并迭代原始 chunk（异常原样抛出）。"""
+        response = await acompletion(**kwargs)
+        async for chunk in response:  # type: ignore
+            yield chunk
+
+    async def _iter_events(
+        self,
+        chunks: AsyncIterator[Any],
+        first: Any,
+        cancellation: CancellationToken,
+    ) -> AsyncIterator[LiteLLMStreamEvent]:
+        """将首 chunk 与后续 chunk 流转换为规范事件流。"""
+        tool_call_buffers: dict[int, _ToolCallBuffer] = {}
+        async for chunk in chain_first(first, chunks):
+            # 检查取消
+            if cancellation.is_cancelled:
+                yield LiteLLMStreamEvent(type=ERROR, error="操作已取消")
+                return
+
+            # 处理 chunk
+            delta = _extract_delta(chunk)
+            if delta is None:
+                continue
+
+            # 文本 delta
+            content = delta.get("content")
+            if content:
+                yield LiteLLMStreamEvent(type=TEXT_DELTA, content=content)
+
+            # 推理 delta（部分模型支持）
+            reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+            if reasoning:
+                yield LiteLLMStreamEvent(
+                    type=REASONING_DELTA, content=reasoning
+                )
+
+            # 工具调用 delta
+            tool_calls = delta.get("tool_calls")
+            if tool_calls:
+                for tc in tool_calls:
+                    idx = tc.get("index", 0)
+                    if idx not in tool_call_buffers:
+                        tool_call_buffers[idx] = _ToolCallBuffer()
+
+                    buf = tool_call_buffers[idx]
+                    fn = tc.get("function", {})
+                    if fn.get("name"):
+                        buf.name = fn["name"]
+                        buf.id = tc.get("id", buf.id)
+                    if fn.get("arguments"):
+                        buf.arguments_parts.append(fn["arguments"])
+
+                    yield LiteLLMStreamEvent(
+                        type=TOOL_CALL_DELTA,
+                        tool_call_id=buf.id,
+                        tool_name=fn.get("name"),
+                        arguments_delta=fn.get("arguments"),
+                    )
+
+            # finish_reason
+            finish_reason = _extract_finish_reason(chunk)
+            if finish_reason:
+                # 收集 usage
+                usage = _extract_usage(chunk)
+                if usage:
+                    yield LiteLLMStreamEvent(type=USAGE, usage=usage)
+
+                yield LiteLLMStreamEvent(
+                    type=DONE,
+                    finish_reason=finish_reason,
+                    usage=usage,
+                )
 
 
 def _extract_delta(chunk: ModelResponse) -> dict | None:

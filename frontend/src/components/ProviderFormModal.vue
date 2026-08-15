@@ -35,6 +35,7 @@ const form = ref({
   base_url: '',
   api_key: '',
   enabled: true,
+  use_proxy: false,
   import_models: false,
 })
 
@@ -66,6 +67,7 @@ watch(
         base_url: props.editing.base_url,
         api_key: props.editing.api_key, // 掩码 ***
         enabled: props.editing.enabled,
+        use_proxy: props.editing.use_proxy,
         import_models: false,
       }
     } else {
@@ -76,6 +78,7 @@ watch(
         base_url: props.importBaseUrl || '',
         api_key: '',
         enabled: true,
+        use_proxy: false,
         import_models: isCatalogImport.value,
       }
     }
@@ -120,6 +123,7 @@ async function handleSave() {
         base_url: form.value.base_url,
         api_key: form.value.api_key,
         enabled: form.value.enabled,
+        use_proxy: form.value.use_proxy,
       })
       useKunMessage('Provider 已更新', 'success')
     } else {
@@ -130,6 +134,7 @@ async function handleSave() {
         base_url: form.value.base_url,
         api_key: form.value.api_key,
         enabled: form.value.enabled,
+        use_proxy: form.value.use_proxy,
         source: isCatalogImport.value ? 'catalog' : 'custom',
         import_models: form.value.import_models,
       })
@@ -220,6 +225,15 @@ async function handleSave() {
         <span class="text-sm font-medium">启用</span>
         <KunSwitch v-model="form.enabled" />
       </div>
+
+      <!-- 走代理 -->
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-medium">走代理</span>
+        <KunSwitch v-model="form.use_proxy" />
+      </div>
+      <p class="text-xs text-gray-400 -mt-2">
+        开启后经全局代理访问该 Provider（需先在 设置 → 代理 中配置并开启代理）
+      </p>
 
       <!-- 测试连接 -->
       <div class="border-t pt-3">
