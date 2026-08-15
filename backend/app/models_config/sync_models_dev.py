@@ -14,7 +14,7 @@ from typing import Any
 
 import aiohttp
 
-from app.models_config.litellm_mapping import kind_from_npm
+from app.models_config.litellm_mapping import kind_from_npm, official_base_url
 from app.net.proxy import is_conn_error
 
 log = logging.getLogger(__name__)
@@ -132,12 +132,16 @@ def list_catalog_providers(
         name = p.get("name", pid)
         if keyword and keyword not in pid.lower() and keyword not in name.lower():
             continue
+        kind = kind_from_npm(p.get("npm"))
         result.append(
             {
                 "provider_id": pid,
                 "name": name,
-                "kind": kind_from_npm(p.get("npm")),
+                "kind": kind,
                 "api": p.get("api") or "",
+                # 默认端点：目录 api 字段优先，兜底 kind 官方端点（供向导预填）
+                "default_base_url": (p.get("api") or "").strip()
+                or official_base_url(kind),
                 "model_count": len(p.get("models") or {}),
                 "doc": p.get("doc") or "",
             }
@@ -154,11 +158,14 @@ def get_catalog_provider(
     p = data.get(provider_id)
     if p is None:
         return None
+    kind = kind_from_npm(p.get("npm"))
     return {
         "provider_id": provider_id,
         "name": p.get("name", provider_id),
-        "kind": kind_from_npm(p.get("npm")),
+        "kind": kind,
         "api": p.get("api") or "",
+        "default_base_url": (p.get("api") or "").strip()
+        or official_base_url(kind),
         "doc": p.get("doc") or "",
         "model_count": len(p.get("models") or {}),
     }

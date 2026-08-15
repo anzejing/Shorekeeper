@@ -47,25 +47,45 @@ class ProviderRequest(BaseModel):
     name: str = ""
     kind: str = Field(description="openai / openai_like / anthropic / gemini")
     base_url: str = ""
+    models_url: str = Field("", description="获取模型列表的完整 URL（/models 端点）")
     api_key: str = ""
     enabled: bool = True
     use_proxy: bool = False
     source: str = "custom"
-    import_models: bool = False
+    model_ids: list[str] = Field(
+        default_factory=list, description="要导入并启用的模型 id 列表（缺省不导入）"
+    )
 
 
 class ProviderUpdateRequest(BaseModel):
     name: str | None = None
     kind: str | None = None
     base_url: str | None = None
+    models_url: str | None = None
     api_key: str | None = None
     enabled: bool | None = None
     use_proxy: bool | None = None
     source: str | None = None
+    model_ids: list[str] | None = Field(
+        default=None,
+        description="启用集合：未列出的现有模型置隐藏（不删除）；null 表示不动模型",
+    )
 
 
 class ModelAddRequest(BaseModel):
     model_id: str = Field(description="模型 id，如 deepseek-v4-flash")
+
+
+class ModelEnableRequest(BaseModel):
+    enabled: bool = Field(description="是否启用")
+
+
+class PreviewRequest(BaseModel):
+    kind: str = Field(description="openai / openai_like / anthropic / gemini")
+    base_url: str = ""
+    models_url: str = Field("", description="完整 /models 地址，缺省按 kind+base_url 推导")
+    api_key: str = ""
+    use_proxy: bool = False
 
 
 class CurrentModelRequest(BaseModel):
@@ -84,12 +104,22 @@ async def list_providers():
 
 @router.post("/providers", status_code=201)
 async def create_provider(body: ProviderRequest):
-    """新增 provider。"""
+    """新增 provider（可带 model_ids 按需导入模型）。"""
     try:
         provider = await _get_service().create_provider(body.model_dump())
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return provider
+
+
+@router.post("/providers/preview")
+async def preview_provider_models(body: PreviewRequest):
+    """预览：按给定参数调 /models 端点拉取模型列表（不落库），供添加向导使用。"""
+    try:
+        models = await _get_service().preview_provider_models(body.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return {"models": models}
 
 
 @router.put("/providers/{provider_id}")
@@ -153,6 +183,22 @@ async def remove_model(provider_id: str, model_id: str):
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return {"message": "模型已删除"}
+
+
+@router.put("/providers/{provider_id}/models/{model_id}")
+async def set_model_enabled(
+    provider_id: str, model_id: str, body: ModelEnableRequest
+):
+    """启用/隐藏模型（隐藏后模型页不展示；隐藏当前模型则清空 current）。"""
+    _validate_provider_id(provider_id)
+    try:
+        return await _get_service().set_model_enabled(
+            provider_id, model_id, body.enabled
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.post("/providers/{provider_id}/sync")

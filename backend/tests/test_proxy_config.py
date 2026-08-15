@@ -295,7 +295,7 @@ class TestProviderSyncProxy:
         )
         seen: dict[str, Any] = {}
 
-        async def fake_fetch(provider, *, timeout=30.0, proxy_url=None, fallback_direct=True):
+        async def fake_fetch(provider, *, models_url=None, timeout=30.0, proxy_url=None, fallback_direct=True):
             seen["proxy_url"] = proxy_url
             return [{"id": "m1", "display_name": "M1"}]
 
@@ -311,7 +311,7 @@ class TestProviderSyncProxy:
         )
         seen: dict[str, Any] = {}
 
-        async def fake_fetch(provider, *, timeout=30.0, proxy_url=None, fallback_direct=True):
+        async def fake_fetch(provider, *, models_url=None, timeout=30.0, proxy_url=None, fallback_direct=True):
             seen["proxy_url"] = proxy_url
             return [{"id": "m1", "display_name": "M1"}]
 

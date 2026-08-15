@@ -75,6 +75,8 @@ async def _migrate(db: aiosqlite.Connection) -> None:
     """旧库迁移：补齐缺失列（幂等，列已存在则跳过）。"""
     # model_providers.use_proxy（v2：LLM 请求走代理开关）
     await _ensure_column(db, "model_providers", "use_proxy", "INTEGER NOT NULL DEFAULT 0")
+    # model_providers.models_url（v3：自定义获取模型地址）
+    await _ensure_column(db, "model_providers", "models_url", "TEXT NOT NULL DEFAULT ''")
 
 
 async def _ensure_column(
@@ -99,6 +101,7 @@ def _row_to_provider(row: aiosqlite.Row) -> ModelProvider:
         name=row["name"],
         kind=row["kind"],
         base_url=row["base_url"],
+        models_url=row["models_url"] if "models_url" in row.keys() else "",
         api_key=row["api_key"],
         enabled=bool(row["enabled"]),
         use_proxy=bool(row["use_proxy"]) if "use_proxy" in row.keys() else False,
@@ -145,14 +148,15 @@ class ModelConfigStore:
     async def create_provider(self, provider: ModelProvider) -> None:
         await self._db.execute(
             "INSERT INTO model_providers"
-            " (provider_id, name, kind, base_url, api_key, enabled, use_proxy, source,"
-            "  created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " (provider_id, name, kind, base_url, models_url, api_key, enabled, use_proxy,"
+            "  source, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 provider.provider_id,
                 provider.name,
                 provider.kind,
                 provider.base_url,
+                provider.models_url,
                 provider.api_key,
                 int(provider.enabled),
                 int(provider.use_proxy),
@@ -165,12 +169,13 @@ class ModelConfigStore:
 
     async def update_provider(self, provider: ModelProvider) -> None:
         await self._db.execute(
-            "UPDATE model_providers SET name=?, kind=?, base_url=?, api_key=?, enabled=?,"
-            " use_proxy=?, source=?, updated_at=? WHERE provider_id=?",
+            "UPDATE model_providers SET name=?, kind=?, base_url=?, models_url=?, api_key=?,"
+            " enabled=?, use_proxy=?, source=?, updated_at=? WHERE provider_id=?",
             (
                 provider.name,
                 provider.kind,
                 provider.base_url,
+                provider.models_url,
                 provider.api_key,
                 int(provider.enabled),
                 int(provider.use_proxy),

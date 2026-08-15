@@ -109,6 +109,7 @@ class ModelConfigService:
             name=(data.get("name") or provider_id).strip(),
             kind=kind,
             base_url=base_url or default_base_url(kind),
+            models_url=(data.get("models_url") or "").strip(),
             api_key=(data.get("api_key") or "").strip(),
             enabled=bool(data.get("enabled", True)),
             use_proxy=bool(data.get("use_proxy", False)),
@@ -118,9 +119,10 @@ class ModelConfigService:
         )
         await self._store.create_provider(provider)
 
-        # 目录导入：从本地缓存预填该 provider 的模型（含 models.dev 元数据）
-        if data.get("import_models") and provider.source == "catalog":
-            await self._import_catalog_models(provider)
+        # 按 model_ids 导入指定模型（含 models.dev 元数据回填，enabled=true）
+        model_ids = data.get("model_ids")
+        if isinstance(model_ids, list) and model_ids:
+            await self._import_model_ids(provider, model_ids)
 
         log.info("创建 provider: %s (%s)", provider_id, kind)
         return provider
@@ -149,6 +151,9 @@ class ModelConfigService:
                 "name": (data.get("name") or existing.name).strip(),
                 "kind": kind,
                 "base_url": base_url,
+                "models_url": (data.get("models_url") or "").strip()
+                if "models_url" in data
+                else existing.models_url,
                 "api_key": api_key,
                 "enabled": bool(data.get("enabled", existing.enabled)),
                 "use_proxy": bool(data.get("use_proxy", existing.use_proxy)),
@@ -157,6 +162,12 @@ class ModelConfigService:
             }
         )
         await self._store.update_provider(updated)
+
+        # model_ids 非 null → 同步启用集合（未列出的现有模型置隐藏，不删除；新 id 插入）
+        model_ids = data.get("model_ids")
+        if model_ids is not None:
+            await self._apply_enabled_set(updated, model_ids)
+
         return updated
 
     async def delete_provider(self, provider_id: str) -> None:
@@ -206,6 +217,21 @@ class ModelConfigService:
         await self._store.delete_entry(provider_id, model_id)
         await self._clear_current_if_matches(provider_id, model_id)
 
+    async def set_model_enabled(
+        self, provider_id: str, model_id: str, enabled: bool
+    ) -> ModelEntry:
+        """启用/隐藏模型；隐藏当前模型时自动清空 current。"""
+        entry = await self._store.get_entry(provider_id, model_id)
+        if entry is None:
+            raise KeyError(f"模型不存在: {provider_id}/{model_id}")
+        if entry.enabled == enabled:
+            return entry
+        updated = entry.model_copy(update={"enabled": enabled})
+        await self._store.upsert_entry(updated)
+        if not enabled:
+            await self._clear_current_if_matches(provider_id, model_id)
+        return updated
+
     async def sync_provider_models(self, provider_id: str) -> dict[str, Any]:
         """调 /models 端点同步，覆盖合并模型列表。"""
         provider = await self._store.get_provider(provider_id)
@@ -216,11 +242,18 @@ class ModelConfigService:
             proxy_url = get_proxy_url(self._config) if provider.use_proxy else None
             fetched = await fetch_provider_models(
                 provider,
+                models_url=provider.models_url or None,
                 proxy_url=proxy_url,
                 fallback_direct=fallback_direct_enabled(self._config),
             )
         except ProviderSyncError as e:
             raise ValueError(str(e)) from e
+
+        # 保留既有启用/隐藏状态（隐藏 ≠ 删除，同步不重置用户选择）
+        old_enabled = {
+            e.model_id: e.enabled
+            for e in await self._store.list_entries(provider_id)
+        }
 
         # 回填 models.dev 元数据（/models 只有 id，详细能力以目录为准）
         entries: list[ModelEntry] = []
@@ -233,6 +266,7 @@ class ModelConfigService:
                     model_id=mid,
                     display_name=item.get("display_name") or meta.get("name") or mid,
                     litellm_name=build_litellm_name(provider.kind, mid),
+                    enabled=old_enabled.get(mid, True),
                     meta_source=meta_source,
                     metadata=meta,
                 )
@@ -241,6 +275,35 @@ class ModelConfigService:
         await self._store.replace_entries(provider_id, entries)
         log.info("provider %s 模型同步完成: %d 个", provider_id, len(entries))
         return {"provider_id": provider_id, "count": len(entries)}
+
+    async def preview_provider_models(
+        self, data: dict[str, Any]
+    ) -> list[dict[str, str]]:
+        """预览：按给定参数调 /models 端点拉取模型列表（不落库），供添加向导使用。"""
+        kind = data.get("kind") or ""
+        validate_kind(kind)
+        provider = ModelProvider(
+            provider_id="__preview__",
+            name="preview",
+            kind=kind,
+            base_url=(data.get("base_url") or "").strip(),
+            models_url=(data.get("models_url") or "").strip(),
+            api_key=(data.get("api_key") or "").strip(),
+            use_proxy=bool(data.get("use_proxy", False)),
+            source="custom",
+            created_at=_now_iso(),
+            updated_at=_now_iso(),
+        )
+        try:
+            proxy_url = get_proxy_url(self._config) if provider.use_proxy else None
+            return await fetch_provider_models(
+                provider,
+                models_url=provider.models_url or None,
+                proxy_url=proxy_url,
+                fallback_direct=fallback_direct_enabled(self._config),
+            )
+        except ProviderSyncError as e:
+            raise ValueError(str(e)) from e
 
     async def _lookup_metadata(
         self, provider: ModelProvider, model_id: str
@@ -317,27 +380,73 @@ class ModelConfigService:
             return None
         return get_catalog_provider_models(catalog, provider_id)
 
-    async def _import_catalog_models(self, provider: ModelProvider) -> int:
-        """目录导入：把该 provider 的模型（含元数据）写入 model_entries。"""
-        catalog = load_catalog_file(self._data_dir)
-        if not catalog:
-            return 0
-        models = get_catalog_provider_models(catalog, provider.provider_id)
-        if not models:
-            return 0
-        entries = [
-            ModelEntry(
-                provider_id=provider.provider_id,
-                model_id=mid,
-                display_name=meta.get("name") or mid,
-                litellm_name=build_litellm_name(provider.kind, mid),
-                meta_source="models_dev",
-                metadata=meta,
+    async def _import_model_ids(
+        self, provider: ModelProvider, model_ids: list[str]
+    ) -> int:
+        """按 id 列表导入模型（含 models.dev 元数据回填，enabled=true）。"""
+        entries: list[ModelEntry] = []
+        for mid in model_ids:
+            mid = mid.strip()
+            if not mid:
+                continue
+            meta, meta_source = await self._lookup_metadata(provider, mid)
+            entries.append(
+                ModelEntry(
+                    provider_id=provider.provider_id,
+                    model_id=mid,
+                    display_name=meta.get("name") or mid,
+                    litellm_name=build_litellm_name(provider.kind, mid),
+                    meta_source=meta_source,
+                    metadata=meta,
+                )
             )
-            for mid, meta in models.items()
-        ]
-        await self._store.replace_entries(provider.provider_id, entries)
+        if entries:
+            await self._store.replace_entries(provider.provider_id, entries)
         return len(entries)
+
+    async def _apply_enabled_set(
+        self, provider: ModelProvider, model_ids: list[str]
+    ) -> None:
+        """把 provider 的模型启用状态同步为给定集合（隐藏=保留不删除）。
+
+        - 现有条目：在集合内 → 启用；不在 → 隐藏（enabled=false）
+        - 集合内新 id：插入并启用
+        - 当前模型被置隐藏 → 清空 current
+        """
+        target = {mid.strip() for mid in model_ids if mid.strip()}
+        existing = await self._store.list_entries(provider.provider_id)
+        for entry in existing:
+            should_enable = entry.model_id in target
+            if entry.enabled != should_enable:
+                await self._store.upsert_entry(
+                    entry.model_copy(update={"enabled": should_enable})
+                )
+        existing_ids = {e.model_id for e in existing}
+        for mid in target - existing_ids:
+            meta, meta_source = await self._lookup_metadata(provider, mid)
+            await self._store.upsert_entry(
+                ModelEntry(
+                    provider_id=provider.provider_id,
+                    model_id=mid,
+                    display_name=meta.get("name") or mid,
+                    litellm_name=build_litellm_name(provider.kind, mid),
+                    meta_source=meta_source,
+                    metadata=meta,
+                )
+            )
+        # 当前模型被置隐藏 → 清空
+        current = await self.get_current()
+        if (
+            current
+            and current.provider_id == provider.provider_id
+            and current.model_id not in target
+        ):
+            await self.clear_current()
+            log.info(
+                "当前模型已清空（被隐藏）: %s/%s",
+                provider.provider_id,
+                current.model_id,
+            )
 
     # ─── 全局当前模型 ─────────────────────────────────────
 
@@ -361,6 +470,8 @@ class ModelConfigService:
         entry = await self._store.get_entry(provider_id, model_id)
         if entry is None:
             raise KeyError(f"模型不存在: {provider_id}/{model_id}")
+        if not entry.enabled:
+            raise ValueError(f"模型已禁用: {model_id}")
         provider = await self._store.get_provider(provider_id)
         if provider is None or not provider.enabled:
             raise ValueError("provider 不存在或已禁用")
@@ -404,6 +515,8 @@ class ModelConfigService:
         entry = await self._store.get_entry(provider_id, model_id)
         if entry is None:
             raise KeyError(f"模型不存在: {provider_id}/{model_id}")
+        if not entry.enabled:
+            raise ValueError(f"模型已禁用: {model_id}")
         provider = await self._store.get_provider(provider_id)
         if provider is None or not provider.enabled:
             raise ValueError("provider 不存在或已禁用")

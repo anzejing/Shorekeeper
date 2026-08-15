@@ -55,6 +55,20 @@ def default_base_url(kind: str) -> str:
     }.get(kind, "")
 
 
+# kind → 官方端点 URL（catalog default_base_url 预填用；兼容类型无官方端点）
+_OFFICIAL_BASE_URL: dict[str, str] = {
+    "openai": "https://api.openai.com/v1",
+    "openai_like": "",
+    "anthropic": "https://api.anthropic.com",
+    "gemini": "https://generativelanguage.googleapis.com",
+}
+
+
+def official_base_url(kind: str) -> str:
+    """kind 对应的官方端点 URL（向导预填 Base URL 用）；未知/兼容类型返回空。"""
+    return _OFFICIAL_BASE_URL.get(kind, "")
+
+
 def validate_kind(kind: str) -> None:
     """校验 provider kind 合法性。"""
     if kind not in PROVIDER_KINDS:

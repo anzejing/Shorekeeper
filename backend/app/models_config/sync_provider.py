@@ -31,6 +31,7 @@ class ProviderSyncError(Exception):
 async def fetch_provider_models(
     provider: ModelProvider,
     *,
+    models_url: str | None = None,
     timeout: float = 30.0,
     proxy_url: str | None = None,
     fallback_direct: bool = True,
@@ -39,6 +40,7 @@ async def fetch_provider_models(
 
     Args:
         provider: provider 配置。
+        models_url: 自定义获取模型地址（完整 URL）；非空时优先使用，忽略 base_url 推导。
         timeout: 请求超时。
         proxy_url: 代理地址；非空时先走代理（由调用方按 provider.use_proxy 决定）。
         fallback_direct: 代理连接失败时是否回退直连重试一次。
@@ -48,13 +50,16 @@ async def fetch_provider_models(
     """
     kind = provider.kind
     if kind in ("openai", "openai_like"):
-        base = provider.base_url
-        if not base:
-            if kind == "openai":
-                base = "https://api.openai.com/v1"
-            else:
-                raise ProviderSyncError("openai_like 类型必须配置 base_url")
-        url = f"{base.rstrip('/')}/models"
+        if models_url:
+            url = models_url
+        else:
+            base = provider.base_url
+            if not base:
+                if kind == "openai":
+                    base = "https://api.openai.com/v1"
+                else:
+                    raise ProviderSyncError("openai_like 类型必须配置 base_url")
+            url = f"{base.rstrip('/')}/models"
         headers: dict[str, str] = {}
         if provider.api_key:
             headers["Authorization"] = f"Bearer {provider.api_key}"
@@ -62,8 +67,11 @@ async def fetch_provider_models(
         return _parse_openai_models(data)
 
     if kind == "anthropic":
-        base = provider.base_url or _ANTHROPIC_BASE
-        url = f"{base.rstrip('/')}/v1/models"
+        if models_url:
+            url = models_url
+        else:
+            base = provider.base_url or _ANTHROPIC_BASE
+            url = f"{base.rstrip('/')}/v1/models"
         headers = {
             "x-api-key": provider.api_key,
             "anthropic-version": "2023-06-01",
@@ -72,8 +80,11 @@ async def fetch_provider_models(
         return _parse_anthropic_models(data)
 
     if kind == "gemini":
-        base = provider.base_url or _GEMINI_BASE
-        url = f"{base.rstrip('/')}/v1beta/models"
+        if models_url:
+            url = models_url
+        else:
+            base = provider.base_url or _GEMINI_BASE
+            url = f"{base.rstrip('/')}/v1beta/models"
         if provider.api_key:
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}key={provider.api_key}"

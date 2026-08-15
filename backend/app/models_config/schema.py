@@ -22,6 +22,9 @@ class ModelProvider(BaseModel):
     base_url: str = Field(
         "", description="API Base URL（openai_like 必填，其余留空用官方端点）"
     )
+    models_url: str = Field(
+        "", description="获取模型列表的完整 URL（/models 端点），空则按 base_url 推导"
+    )
     api_key: str = Field("", description="API Key（secret，响应中掩码）")
     enabled: bool = Field(True, description="是否启用")
     use_proxy: bool = Field(False, description="LLM 请求是否走代理（默认关闭，国内直连 Provider 不受影响）")
