@@ -8,6 +8,7 @@ import {
   fetchModels,
   addModel,
   removeModel,
+  setModelEnabled as setModelEnabledApi,
   syncProviderModels,
   fetchCatalogStatus,
   syncCatalog,
@@ -115,6 +116,26 @@ export const useModelsStore = defineStore('models', () => {
     }
   }
 
+  async function setModelEnabled(
+    providerId: string,
+    modelId: string,
+    enabled: boolean,
+  ) {
+    const entry = await setModelEnabledApi(providerId, modelId, enabled)
+    const list = modelsByProvider.value[providerId] || []
+    const idx = list.findIndex((m) => m.model_id === modelId)
+    if (idx !== -1) list[idx] = entry
+    // 隐藏的是当前模型 → 后端已清空，本地同步
+    if (
+      !enabled &&
+      current.value?.provider_id === providerId &&
+      current.value?.model_id === modelId
+    ) {
+      current.value = null
+    }
+    return entry
+  }
+
   async function syncModels(providerId: string) {
     const res = await syncProviderModels(providerId)
     await loadModels(providerId)
@@ -186,6 +207,7 @@ export const useModelsStore = defineStore('models', () => {
     loadModels,
     add,
     removeModelEntry,
+    setModelEnabled,
     syncModels,
     loadCatalogStatus,
     syncCatalogData,

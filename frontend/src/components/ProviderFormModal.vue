@@ -2,7 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import { useKunMessage } from '@kungal/ui-vue'
 import { useModelsStore } from '../stores/models'
-import { testConnection } from '../api/models'
+import { testConnection, fetchCatalogModels } from '../api/models'
 import type { ModelProvider, ProviderKind } from '../api/models'
 
 const props = defineProps<{
@@ -127,6 +127,12 @@ async function handleSave() {
       })
       useKunMessage('Provider 已更新', 'success')
     } else {
+      // 目录导入：拉取 catalog 模型列表 → 全量传入 model_ids（后端已用 model_ids 取代 import_models）
+      let modelIds: string[] | undefined
+      if (isCatalogImport.value && form.value.import_models) {
+        const catalogModels = await fetchCatalogModels(form.value.provider_id)
+        modelIds = Object.keys(catalogModels)
+      }
       await store.create({
         provider_id: form.value.provider_id,
         name: form.value.name || form.value.provider_id,
@@ -136,7 +142,7 @@ async function handleSave() {
         enabled: form.value.enabled,
         use_proxy: form.value.use_proxy,
         source: isCatalogImport.value ? 'catalog' : 'custom',
-        import_models: form.value.import_models,
+        model_ids: modelIds,
       })
       useKunMessage('Provider 已创建', 'success')
     }

@@ -9,6 +9,7 @@ export interface ModelProvider {
   name: string
   kind: ProviderKind
   base_url: string
+  models_url: string
   api_key: string
   enabled: boolean
   use_proxy: boolean
@@ -39,6 +40,7 @@ export interface CatalogProvider {
   name: string
   kind: ProviderKind
   api: string
+  default_base_url: string
   model_count: number
   doc: string
 }
@@ -79,7 +81,7 @@ export function fetchProviders(): Promise<ModelProvider[]> {
 }
 
 export function createProvider(body: Partial<ModelProvider> & {
-  import_models?: boolean
+  model_ids?: string[]
 }): Promise<ModelProvider> {
   return request(`${BASE}/providers`, {
     method: 'POST',
@@ -123,6 +125,17 @@ export function removeModel(
 ): Promise<{ message: string }> {
   return request(`${BASE}/providers/${providerId}/models/${modelId}`, {
     method: 'DELETE',
+  })
+}
+
+export function setModelEnabled(
+  providerId: string,
+  modelId: string,
+  enabled: boolean,
+): Promise<ModelEntry> {
+  return request(`${BASE}/providers/${providerId}/models/${modelId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
   })
 }
 

@@ -5,7 +5,7 @@ import { useModelsStore } from '../stores/models'
 import { testConnection } from '../api/models'
 import ModelSelector from '../components/ModelSelector.vue'
 import ProviderFormModal from '../components/ProviderFormModal.vue'
-import type { ModelProvider } from '../api/models'
+import type { ModelEntry, ModelProvider } from '../api/models'
 
 const store = useModelsStore()
 
@@ -110,6 +110,46 @@ async function handleTestCurrent() {
     currentTestResult.value = `❌ ${e.message || '连接失败'}`
   } finally {
     currentTesting.value = false
+  }
+}
+
+// ─── 模型页：按 provider 分组的已启用模型 ───
+
+const enabledGroups = computed(() => {
+  const groups: { provider: ModelProvider; models: ModelEntry[] }[] = []
+  for (const p of store.providers) {
+    const models = (store.modelsByProvider[p.provider_id] || []).filter(
+      (m) => m.enabled,
+    )
+    if (models.length > 0) groups.push({ provider: p, models })
+  }
+  return groups
+})
+
+function isCurrentModel(providerId: string, modelId: string) {
+  return (
+    store.current?.provider_id === providerId &&
+    store.current?.model_id === modelId
+  )
+}
+
+async function handleHideModel(
+  providerId: string,
+  modelId: string,
+  isCurrent: boolean,
+) {
+  const ok = await useKunAlert({
+    title: '隐藏模型',
+    message: isCurrent
+      ? `「${modelId}」是当前模型，隐藏后将清空当前模型选择，需重新选择后才能聊天。确定继续？`
+      : `确定隐藏「${modelId}」？隐藏后模型页与聊天选择器将不再显示，可在服务商页编辑该服务商时重新启用。`,
+  })
+  if (!ok) return
+  try {
+    await store.setModelEnabled(providerId, modelId, false)
+    useKunMessage(`已隐藏: ${modelId}`, 'success')
+  } catch (e: any) {
+    useKunMessage(e.message || '隐藏失败', 'error')
   }
 }
 
@@ -327,6 +367,77 @@ async function handleSyncCatalog() {
           :class="currentTestResult.startsWith('✅') ? 'text-green-600' : 'text-red-500'">
           {{ currentTestResult }}
         </p>
+      </KunCard>
+
+      <!-- 已启用模型（按服务商分组） -->
+      <template v-if="enabledGroups.length > 0">
+        <KunCard variant="flat" class="p-5 mt-4">
+          <div class="text-sm font-semibold mb-1">可用模型</div>
+          <p class="text-xs text-gray-500 mb-3">
+            按服务商分组展示已启用模型；隐藏的模型不显示，可在服务商页编辑对应服务商重新启用。
+          </p>
+          <div
+            v-for="group in enabledGroups"
+            :key="group.provider.provider_id"
+            class="mb-4 last:mb-0"
+          >
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-sm font-semibold">{{ group.provider.name }}</span>
+              <KunChip size="xs" variant="flat">
+                {{ kindLabel[group.provider.kind] }}
+              </KunChip>
+              <span class="text-xs text-gray-400">{{ group.models.length }} 个模型</span>
+            </div>
+            <div class="flex flex-col gap-1">
+              <div
+                v-for="model in group.models"
+                :key="model.model_id"
+                class="flex items-center justify-between px-2 py-1.5 rounded border border-gray-100 hover:bg-gray-50"
+              >
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="text-sm">{{ model.display_name }}</span>
+                  <code class="text-xs bg-gray-100 px-1 rounded">{{ model.litellm_name }}</code>
+                  <KunChip
+                    v-if="model.metadata?.tool_call === false"
+                    size="xs"
+                    color="warning"
+                    title="该模型可能不支持工具调用"
+                  >
+                    无工具调用
+                  </KunChip>
+                  <KunChip
+                    v-if="isCurrentModel(group.provider.provider_id, model.model_id)"
+                    size="xs"
+                    color="primary"
+                  >
+                    当前
+                  </KunChip>
+                </div>
+                <KunButton
+                  variant="flat"
+                  size="sm"
+                  color="warning"
+                  @click="handleHideModel(group.provider.provider_id, model.model_id, isCurrentModel(group.provider.provider_id, model.model_id))"
+                >
+                  隐藏
+                </KunButton>
+              </div>
+            </div>
+          </div>
+        </KunCard>
+      </template>
+
+      <!-- 无可用模型 -->
+      <KunCard v-else variant="flat" class="p-5 mt-4">
+        <KunNull
+          description="暂无已启用的模型。请先在「Provider」Tab 配置并启用模型，或在服务商编辑中启用隐藏的模型。"
+        >
+          <template #actions>
+            <KunButton variant="flat" color="primary" @click="activeTab = 'providers'">
+              去配置 Provider
+            </KunButton>
+          </template>
+        </KunNull>
       </KunCard>
     </template>
 
