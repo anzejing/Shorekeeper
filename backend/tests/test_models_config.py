@@ -956,3 +956,70 @@ class TestDisabledModelEnforcement:
         entries = await service.list_models("test-provider")
         state = {e.model_id: e.enabled for e in entries}
         assert state == {"model-a": True, "model-b": False, "model-c": True}
+
+
+# ─── 服务商隐藏/禁用（PR3） ───────────────────────────────
+
+
+class TestProviderDisable:
+    @pytest.mark.asyncio
+    async def test_disable_provider_clears_current(
+        self, service: ModelConfigService, app: FastAPI
+    ) -> None:
+        """禁用服务商 → 其下当前模型清空。"""
+        await _create_provider(service)
+        await service.add_model("test-provider", "model-a")
+        await service.set_current("test-provider", "model-a")
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.put(
+                "/api/models/providers/test-provider",
+                json={"enabled": False},
+            )
+            assert resp.status_code == 200
+
+            current = await client.get("/api/models/current")
+            assert current.json() is None
+
+    @pytest.mark.asyncio
+    async def test_get_current_null_when_provider_disabled(
+        self, service: ModelConfigService, app: FastAPI
+    ) -> None:
+        """provider 被禁用（绕过 update 清空）→ get_current 返回 null。"""
+        await _create_provider(service)
+        await service.add_model("test-provider", "model-a")
+        await service.set_current("test-provider", "model-a")
+
+        provider = await service._store.get_provider("test-provider")
+        await service._store.update_provider(
+            provider.model_copy(update={"enabled": False})
+        )
+
+        assert await service.get_current() is None
+
+    @pytest.mark.asyncio
+    async def test_re_enable_provider_keeps_models(
+        self, service: ModelConfigService, app: FastAPI
+    ) -> None:
+        """隐藏后重新启用 → 模型保留（隐藏 ≠ 删除）。"""
+        await _create_provider(service)
+        await service.add_model("test-provider", "model-a")
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp = await client.put(
+                "/api/models/providers/test-provider",
+                json={"enabled": False},
+            )
+            assert resp.status_code == 200
+            resp = await client.put(
+                "/api/models/providers/test-provider",
+                json={"enabled": True},
+            )
+            assert resp.status_code == 200
+
+            resp = await client.get("/api/models/providers/test-provider/models")
+            assert len(resp.json()) == 1

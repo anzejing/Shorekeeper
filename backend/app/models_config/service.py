@@ -163,6 +163,10 @@ class ModelConfigService:
         )
         await self._store.update_provider(updated)
 
+        # 禁用 provider → 若当前模型在此 provider 则清空 current
+        if existing.enabled and not updated.enabled:
+            await self._clear_current_if_matches(provider_id, None)
+
         # model_ids 非 null → 同步启用集合（未列出的现有模型置隐藏，不删除；新 id 插入）
         model_ids = data.get("model_ids")
         if model_ids is not None:
@@ -458,6 +462,9 @@ class ModelConfigService:
         model_id = raw.get("model_id")
         entry = await self._store.get_entry(provider_id or "", model_id or "")
         if entry is None or not entry.enabled:
+            return None
+        provider = await self._store.get_provider(provider_id or "")
+        if provider is None or not provider.enabled:
             return None
         return CurrentModel(
             provider_id=provider_id,
