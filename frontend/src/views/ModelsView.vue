@@ -123,39 +123,36 @@ const kindLabel: Record<string, string> = {
 
     <!-- 当前模型 -->
     <KunCard variant="flat" class="p-5">
-      <div class="text-sm font-semibold mb-3">全局当前模型</div>
+      <div class="text-sm font-semibold mb-3">全局当前模型（默认模型）</div>
 
-      <!-- 已配置 -->
-      <template v-if="store.current">
-        <div class="flex items-center gap-2 mb-4">
+      <div class="flex items-center gap-2 mb-4">
+        <template v-if="store.current">
           <KunChip color="primary" size="sm">
             <KunIcon name="lucide:sparkles" class="mr-1" style="font-size: 12px" />
             {{ store.current.litellm_name }}
           </KunChip>
-        </div>
-        <div class="flex items-center gap-3 mb-4">
-          <ModelSelector :model="store.current" @change="handleModelChange" />
-          <KunButton variant="flat" size="sm" color="error" @click="handleClearCurrent">
-            清空
-          </KunButton>
-        </div>
-        <p class="text-xs text-gray-500">
-          聊天页输入框左上方会显示当前模型，可随时切换；对话中途切换后新消息使用新模型，上下文保持连续。
-        </p>
-      </template>
+        </template>
+        <KunChip v-else size="sm" color="warning">
+          <KunIcon name="lucide:alert-circle" class="mr-1" style="font-size: 12px" />
+          未选择
+        </KunChip>
+      </div>
 
-      <!-- 未配置 -->
-      <template v-else>
-        <KunNull
-          description="尚未选择当前模型。请先启用一个模型并在此选择，或在「服务商」页配置服务商。"
+      <div class="flex items-center gap-3 mb-4">
+        <ModelSelector :model="store.current" @change="handleModelChange" />
+        <KunButton
+          v-if="store.current"
+          variant="flat"
+          size="sm"
+          color="error"
+          @click="handleClearCurrent"
         >
-          <template #actions>
-            <KunButton variant="flat" color="primary" @click="$router.push('/providers')">
-              去服务商页
-            </KunButton>
-          </template>
-        </KunNull>
-      </template>
+          清空
+        </KunButton>
+      </div>
+      <p class="text-xs text-gray-500">
+        在此选择的服务商与模型将作为聊天页默认模型；对话中途切换后新消息使用新模型，上下文保持连续。
+      </p>
     </KunCard>
 
     <!-- 测试连接 -->

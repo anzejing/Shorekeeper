@@ -64,19 +64,18 @@ async function handleModelChange(providerId: string, modelId: string) {
           <KunIcon name="lucide:sparkles" class="mr-1" style="font-size: 12px" />
           {{ modelsStore.currentLabel }}
         </KunChip>
-        <ModelSelector
-          :model="modelsStore.current"
-          compact
-          @change="handleModelChange"
-        />
       </template>
       <template v-else>
         <span class="toolbar-hint">
           <KunIcon name="lucide:alert-circle" />
-          尚未选择模型，发送前请先选择
-          <RouterLink to="/models" class="toolbar-link">去「模型」页配置 →</RouterLink>
+          尚未选择模型
         </span>
       </template>
+      <ModelSelector
+        :model="modelsStore.current"
+        compact
+        @change="handleModelChange"
+      />
     </div>
 
     <div class="chat-input-box">

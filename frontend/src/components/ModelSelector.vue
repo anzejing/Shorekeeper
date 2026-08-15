@@ -43,7 +43,8 @@ async function handleProviderChange(providerId: string) {
     await store.loadModels(providerId)
   }
   const models = store.modelsByProvider[providerId] || []
-  const first = models[0]
+  // 优先选第一个已启用模型（避免选中隐藏模型被后端拒绝）
+  const first = models.find((m) => m.enabled) || models[0]
   if (first) {
     emit('change', providerId, first.model_id)
   }
@@ -58,7 +59,7 @@ function handleModelChange(modelId: string) {
 <template>
   <div class="model-selector" :class="{ compact }">
     <KunSelect
-      v-model="selectedProviderId"
+      :model-value="selectedProviderId"
       :options="providerOptions"
       placeholder="选择 Provider"
       size="sm"
