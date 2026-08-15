@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useKunMessage, useKunAlert } from '@kungal/ui-vue'
 import { useModelsStore } from '../stores/models'
-import ProviderFormModal from '../components/ProviderFormModal.vue'
+import AddProviderWizard from '../components/AddProviderWizard.vue'
 import type { ModelProvider } from '../api/models'
 
 const store = useModelsStore()
@@ -29,25 +29,19 @@ async function handleSyncCatalog() {
   }
 }
 
-// ─── Provider 弹窗 ───────────────────────────────────────
+// ─── Provider 向导 ───────────────────────────────────────
 
-const showProviderModal = ref(false)
+const showWizard = ref(false)
 const editingProvider = ref<ModelProvider | null>(null)
-const importProviderId = ref('')
-const importBaseUrl = ref('')
 
 function openAddProvider() {
   editingProvider.value = null
-  importProviderId.value = ''
-  importBaseUrl.value = ''
-  showProviderModal.value = true
+  showWizard.value = true
 }
 
 function openEditProvider(provider: ModelProvider) {
   editingProvider.value = provider
-  importProviderId.value = ''
-  importBaseUrl.value = ''
-  showProviderModal.value = true
+  showWizard.value = true
 }
 
 async function onProviderSaved() {
@@ -355,13 +349,11 @@ const kindLabel: Record<string, string> = {
       </KunCard>
     </div>
 
-    <!-- Provider 表单弹窗 -->
-    <ProviderFormModal
-      :show="showProviderModal"
+    <!-- 服务商向导（新增/编辑） -->
+    <AddProviderWizard
+      :show="showWizard"
       :editing="editingProvider"
-      :import-provider-id="importProviderId"
-      :import-base-url="importBaseUrl"
-      @close="showProviderModal = false"
+      @close="showWizard = false"
       @saved="onProviderSaved"
     />
   </div>

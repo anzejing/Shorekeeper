@@ -155,6 +155,19 @@ export function testConnection(
   })
 }
 
+export function previewProviderModels(body: {
+  kind: ProviderKind
+  base_url: string
+  models_url?: string
+  api_key?: string
+  use_proxy?: boolean
+}): Promise<{ models: { id: string; display_name?: string }[] }> {
+  return request(`${BASE}/providers/preview`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 // ─── models.dev 目录 ─────────────────────────────────────
 
 export function fetchCatalogStatus(): Promise<CatalogStatus> {
