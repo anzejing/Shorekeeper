@@ -576,10 +576,15 @@ async function handleSave() {
 
     <!-- 底部操作 -->
     <div class="flex justify-between gap-2 mt-6">
-      <KunButton variant="flat" :disabled="saving" @click="step === 1 ? emit('close') : (step = 1)">
-        {{ step === 1 ? '取消' : '上一步' }}
+      <KunButton
+        v-if="step === 2"
+        variant="flat"
+        :disabled="saving"
+        @click="step = 1"
+      >
+        上一步
       </KunButton>
-      <div class="flex gap-2">
+      <div class="flex gap-2 ml-auto">
         <KunButton variant="flat" :disabled="saving" @click="emit('close')">取消</KunButton>
         <KunButton
           v-if="step === 1"
