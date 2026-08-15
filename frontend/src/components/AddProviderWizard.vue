@@ -154,6 +154,8 @@ watch(
         api_key: '',
         use_proxy: false,
       }
+      // 未输入搜索时默认展示目录全部服务商（按模型数降序）
+      await store.loadCatalogProviders('')
     }
   },
 )
