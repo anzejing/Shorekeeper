@@ -263,7 +263,7 @@ models_url: string   // 获取模型地址（/models 端点），空 = 按 base_
 |------|------|------|------|
 | **PR1 后端基础** | schema 增 models_url + 迁移；create 支持 model_ids；set_model_enabled；resolve 校验 enabled；sync 保留 enabled；catalog default_base_url；preview 接口 | 后端先行，前端契约不变 | ✅ 已完成（5956806） |
 | **PR2 模型页** | ModelsView 重写（当前模型 + 分组仅已启用模型 + 隐藏开关） | 依赖 PR1 的模型开关 API | ✅ 已完成（2f40d34） |
-| **PR3 服务商页** | ProvidersView 新建；导航改造；同步按钮迁移；目录 Tab 删除 | 依赖 PR1 | ⬜ 待开发 |
+| **PR3 服务商页** | ProvidersView 新建；导航改造；同步按钮迁移；目录 Tab 删除 | 依赖 PR1 | ✅ 已完成（a2038a6） |
 | **PR4 添加向导** | AddProviderWizard 两步流；替换 ProviderFormModal；编辑复用（B-2 已确认） | 依赖 PR1/PR3 | ⬜ 待开发 |
 
 ---
