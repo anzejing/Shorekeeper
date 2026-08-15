@@ -69,6 +69,26 @@ def official_base_url(kind: str) -> str:
     return _OFFICIAL_BASE_URL.get(kind, "")
 
 
+def normalize_anthropic_base_url(base_url: str) -> str:
+    """归一化 anthropic base_url 供 litellm 使用。
+
+    litellm 会自动追加 /v1/messages（main.py）；而 models.dev 的 api 字段
+    （AI SDK 语义）常以 /v1 结尾，直接传入会变成 .../v1/v1/messages 404。
+
+    - 以 /v1/messages 结尾 → 原样（已是完整端点）
+    - 以 /v1 结尾 → 去掉 /v1（litellm 会拼回 /v1/messages）
+    - 其他 → 原样（litellm 拼 /v1/messages）
+    """
+    base = (base_url or "").strip().rstrip("/")
+    if not base:
+        return base_url
+    if base.endswith("/v1/messages"):
+        return base
+    if base.endswith("/v1"):
+        return base[: -len("/v1")]
+    return base
+
+
 def validate_kind(kind: str) -> None:
     """校验 provider kind 合法性。"""
     if kind not in PROVIDER_KINDS:

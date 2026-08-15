@@ -22,6 +22,7 @@ from app.config.service import ConfigService
 from app.models_config.litellm_mapping import (
     build_litellm_name,
     default_base_url,
+    normalize_anthropic_base_url,
     validate_kind,
 )
 from app.net.proxy import (
@@ -531,7 +532,11 @@ class ModelConfigService:
         if provider.api_key:
             llm_extra["api_key"] = provider.api_key
         if provider.base_url:
-            llm_extra["base_url"] = provider.base_url
+            # anthropic：models.dev api 语义带 /v1，litellm 会自动拼 /v1/messages，需归一化避免重复
+            base_url = provider.base_url
+            if provider.kind == "anthropic":
+                base_url = normalize_anthropic_base_url(base_url)
+            llm_extra["base_url"] = base_url
         # LLM 请求是否走代理（透传给 native_litellm_client）
         llm_extra["use_proxy"] = provider.use_proxy
         return {
@@ -560,7 +565,12 @@ class ModelConfigService:
         if provider.api_key:
             kwargs["api_key"] = provider.api_key
         if provider.base_url:
-            kwargs["api_base"] = provider.base_url
+            # anthropic：避免 models.dev 带 /v1 的 base_url 与 litellm 自动追加的 /v1/messages 重复
+            kwargs["api_base"] = (
+                normalize_anthropic_base_url(provider.base_url)
+                if provider.kind == "anthropic"
+                else provider.base_url
+            )
 
         # 代理：provider.use_proxy 开启且全局代理可用时走代理，连接失败回退直连
         proxy_client: AsyncOpenAI | None = None

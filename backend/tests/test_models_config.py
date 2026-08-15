@@ -1137,3 +1137,70 @@ class TestModelsUrlDerivation:
         )
         await fetch_provider_models(provider)
         assert seen["url"] == "https://x.local/v1/models"
+
+
+# ─── anthropic base_url 归一化（litellm 自动拼 /v1/messages） ──
+
+
+class TestNormalizeAnthropicBaseUrl:
+    def test_v1_suffix_stripped(self) -> None:
+        from app.models_config.litellm_mapping import normalize_anthropic_base_url
+
+        assert (
+            normalize_anthropic_base_url("https://api.minimaxi.com/anthropic/v1")
+            == "https://api.minimaxi.com/anthropic"
+        )
+
+    def test_full_messages_endpoint_kept(self) -> None:
+        from app.models_config.litellm_mapping import normalize_anthropic_base_url
+
+        assert (
+            normalize_anthropic_base_url("https://x.com/anthropic/v1/messages")
+            == "https://x.com/anthropic/v1/messages"
+        )
+
+    def test_official_base_kept(self) -> None:
+        from app.models_config.litellm_mapping import normalize_anthropic_base_url
+
+        assert (
+            normalize_anthropic_base_url("https://api.anthropic.com")
+            == "https://api.anthropic.com"
+        )
+
+    def test_trailing_slash(self) -> None:
+        from app.models_config.litellm_mapping import normalize_anthropic_base_url
+
+        assert (
+            normalize_anthropic_base_url("https://api.minimaxi.com/anthropic/v1/")
+            == "https://api.minimaxi.com/anthropic"
+        )
+
+    @pytest.mark.asyncio
+    async def test_resolve_model_normalizes_anthropic(
+        self, service: ModelConfigService
+    ) -> None:
+        """resolve_model 对 anthropic 类型返回归一化 base_url（litellm 会拼 /v1/messages）。"""
+        await service.create_provider(
+            {
+                "provider_id": "minimax",
+                "name": "MiniMax",
+                "kind": "anthropic",
+                "base_url": "https://api.minimaxi.com/anthropic/v1",
+                "api_key": "sk-x",
+            }
+        )
+        await service.add_model("minimax", "abab7-chat")
+        resolved = await service.resolve_model("minimax", "abab7-chat")
+        assert resolved["llm_extra"]["base_url"] == "https://api.minimaxi.com/anthropic"
+
+    @pytest.mark.asyncio
+    async def test_resolve_model_keeps_openai_base(
+        self, service: ModelConfigService
+    ) -> None:
+        """openai_like 类型 base_url 保持原样（litellm openai 语义 base 带 /v1）。"""
+        await _create_provider(service)
+        await service.add_model("test-provider", "model-a")
+        resolved = await service.resolve_model("test-provider", "model-a")
+        assert (
+            resolved["llm_extra"]["base_url"] == "https://test.local/v1"
+        )
